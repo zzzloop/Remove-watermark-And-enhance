@@ -26,18 +26,6 @@
 http://127.0.0.1:8000
 ```
 
-## 打包给别人
-
-直接压缩整个 `去水印软件` 文件夹即可。建议保留以下目录：
-
-- `backend/`
-- `frontend/`
-- `models/`
-- `start.bat`
-- `README.md`
-
-对方电脑仍需要有可用的 conda 环境和 CUDA 版 PyTorch。`models/` 可以一起打包，以减少首次下载模型的时间；Python 依赖会安装到所选 conda 环境中。
-
 ## 功能
 
 - 上传 JPG / PNG / WebP 图片
