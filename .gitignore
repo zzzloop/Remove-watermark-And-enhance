@@ -1,0 +1,33 @@
+# Model weights and downloaded model caches
+models/
+
+# Runtime caches and logs
+.cache/
+startup.log
+*.log
+
+# Local Python environments and project-local dependency installs
+.venv/
+venv/
+env/
+Include/
+Lib/
+Scripts/
+pyvenv.cfg
+python_libs/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local test images / scratch outputs
+测试水印图*.png
+outputs/
+results/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

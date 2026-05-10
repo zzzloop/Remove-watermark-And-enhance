@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>去水印工具</title>
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --text: #111827;
+      --muted: #64748b;
+      --line: #dbe3ee;
+      --brand: #2563eb;
+      --brand-2: #0f766e;
+      --danger: #dc2626;
+      --ok: #16a34a;
+      --shadow: 0 16px 40px rgba(15, 23, 42, .12);
+      --radius: 8px;
+    }
+
+    [data-theme="dark"] {
+      --bg: #10151f;
+      --panel: #171e2b;
+      --panel-2: #111827;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --line: #2b3648;
+      --brand: #60a5fa;
+      --brand-2: #2dd4bf;
+      --shadow: 0 18px 50px rgba(0, 0, 0, .42);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: 58px 1fr;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      background: rgba(255, 255, 255, .82);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(14px);
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    [data-theme="dark"] header { background: rgba(23, 30, 43, .84); }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; }
+    .brand-mark {
+      width: 34px; height: 34px; border-radius: 8px;
+      display: grid; place-items: center; color: white;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      box-shadow: 0 8px 18px rgba(37, 99, 235, .25);
+    }
+    .status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr) 380px;
+      min-height: calc(100vh - 58px);
+    }
+
+    aside {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 18px;
+      overflow: auto;
+    }
+    .result-panel { border-right: 0; border-left: 1px solid var(--line); display: none; }
+    .result-panel.open { display: block; }
+
+    .section { padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .section:first-child { padding-top: 0; }
+    .section:last-child { border-bottom: 0; }
+    .label { display: block; margin-bottom: 10px; font-size: 12px; font-weight: 700; color: var(--muted); }
+
+    .upload {
+      border: 1.5px dashed var(--line);
+      background: var(--panel-2);
+      border-radius: var(--radius);
+      padding: 22px 14px;
+      display: grid;
+      gap: 7px;
+      text-align: center;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+    .upload:hover, .upload.drag { border-color: var(--brand); background: rgba(37, 99, 235, .08); }
+    .upload strong { font-size: 15px; }
+    .upload span { color: var(--muted); font-size: 12px; }
+
+    .btn, .icon-btn, .seg button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: var(--radius);
+      min-height: 38px;
+      padding: 0 13px;
+      font: inherit;
+      cursor: pointer;
+      transition: .16s ease;
+    }
+    .btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 650; }
+    .btn:hover, .icon-btn:hover, .seg button:hover { border-color: var(--brand); }
+    .btn.primary { border-color: transparent; color: white; background: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+    .btn.danger { color: var(--danger); }
+    .btn:disabled { opacity: .48; cursor: not-allowed; }
+    .icon-btn { min-width: 38px; padding: 0; }
+
+    .row { display: flex; gap: 8px; align-items: center; }
+    .stack { display: grid; gap: 10px; }
+    .seg { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .seg button.active { color: white; border-color: transparent; background: var(--brand); }
+    .model-list { display: grid; gap: 8px; }
+    .model-option {
+      width: 100%;
+      display: grid;
+      gap: 4px;
+      text-align: left;
+      min-height: auto;
+      padding: 10px 12px;
+    }
+    .model-option.active { border-color: var(--brand); background: rgba(37, 99, 235, .08); }
+    .model-option strong { font-size: 13px; }
+    .model-option span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    textarea {
+      width: 100%;
+      min-height: 68px;
+      resize: vertical;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 9px 10px;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    input[type="range"] { width: 100%; accent-color: var(--brand); }
+    .range-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+    .hint { color: var(--muted); font-size: 12px; line-height: 1.7; }
+    kbd { border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; background: var(--panel-2); }
+
+    main {
+      min-width: 0;
+      position: relative;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      overflow: hidden;
+      background:
+        linear-gradient(45deg, rgba(148, 163, 184, .14) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(148, 163, 184, .14) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, .14) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, .14) 75%);
+      background-size: 22px 22px;
+      background-position: 0 0, 0 11px, 11px -11px, -11px 0;
+    }
+    main.drag { outline: 3px dashed var(--brand); outline-offset: -12px; }
+
+    .empty { text-align: center; color: var(--muted); display: grid; gap: 10px; }
+    .empty .big { font-size: 54px; opacity: .45; }
+
+    .canvas-shell {
+      position: relative;
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      background: #fff;
+      display: none;
+    }
+    canvas { display: block; }
+    #maskCanvas { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
+    #maskCanvas.eraser { cursor: cell; }
+
+    .canvas-tools {
+      position: absolute;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      display: none;
+      gap: 8px;
+      padding: 8px;
+      background: rgba(17, 24, 39, .82);
+      border: 1px solid rgba(255, 255, 255, .12);
+      border-radius: 8px;
+      backdrop-filter: blur(12px);
+      z-index: 5;
+    }
+    .canvas-tools .icon-btn { color: #fff; background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16); }
+
+    .compare {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius);
+      background: var(--panel-2);
+      box-shadow: inset 0 0 0 1px var(--line);
+      user-select: none;
+    }
+    .compare img { display: block; width: 100%; height: auto; }
+    .before-layer { position: absolute; inset: 0; width: 50%; overflow: hidden; }
+    .before-layer img { height: 100%; width: auto; max-width: none; }
+    .splitter {
+      position: absolute; top: 0; bottom: 0; left: 50%;
+      width: 3px; background: white; box-shadow: 0 0 0 1px rgba(0,0,0,.12);
+      cursor: ew-resize;
+    }
+    .splitter::after {
+      content: "↔"; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 34px; height: 34px; border-radius: 50%;
+      display: grid; place-items: center; color: white; background: var(--brand);
+      box-shadow: 0 8px 18px rgba(0,0,0,.28);
+    }
+    .badge { position: absolute; top: 10px; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: white; background: rgba(15,23,42,.72); }
+    .badge.before { left: 10px; }
+    .badge.after { right: 10px; }
+
+    .meta { display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
+    .meta div { display: flex; justify-content: space-between; gap: 12px; }
+    .meta strong { color: var(--text); font-weight: 650; }
+
+    .overlay, .download-modal {
+      position: fixed; inset: 0; display: none; place-items: center;
+      background: rgba(15, 23, 42, .54); backdrop-filter: blur(8px); z-index: 100;
+    }
+    .overlay.open, .download-modal.open { display: grid; }
+    .dialog {
+      width: min(460px, calc(100vw - 32px));
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 14px;
+    }
+    .spinner {
+      width: 42px; height: 42px; border-radius: 50%;
+      border: 4px solid var(--line); border-top-color: var(--brand);
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+      background: #111827; color: white; padding: 11px 16px; border-radius: 8px;
+      box-shadow: var(--shadow); z-index: 120; max-width: calc(100vw - 32px);
+    }
+    .toast.error { background: var(--danger); }
+
+    .progress-line { display: grid; gap: 6px; }
+    .progress-top { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+    .bar { height: 8px; border-radius: 99px; overflow: hidden; background: var(--line); }
+    .bar span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .25s ease; }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 280px minmax(0, 1fr); }
+      .result-panel.open { position: fixed; right: 0; top: 58px; bottom: 0; width: min(380px, 96vw); z-index: 30; box-shadow: var(--shadow); }
+    }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 42vh; }
+      main { min-height: 58vh; padding: 12px; }
+      header { padding: 0 12px; }
+      .status span:first-child { display: none; }
+    }
+  </style>
+</head>
+<body data-theme="light">
+<div class="app">
+  <header>
+    <div class="brand"><span class="brand-mark">AI</span><span>去水印工具</span></div>
+    <div class="status">
+      <span id="gpuStatus">正在检查环境...</span>
+      <button class="icon-btn" id="themeBtn" title="切换主题">◐</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <section class="section">
+        <div class="upload" id="uploadBox">
+          <strong>上传或拖入图片</strong>
+          <span>支持 JPG、PNG、WebP。水印位置用画笔涂出来。</span>
+        </div>
+        <input id="fileInput" type="file" accept="image/*" hidden>
+      </section>
+
+      <section class="section stack" id="editControls" hidden>
+        <span class="label">遮罩工具</span>
+        <div class="range-head"><span>画笔大小</span><strong id="brushValue">34</strong></div>
+        <input id="brushSize" type="range" min="4" max="150" value="34">
+        <div class="seg">
+          <button class="mode active" data-mode="draw">涂抹</button>
+          <button class="mode" data-mode="erase">擦除</button>
+        </div>
+        <div class="row">
+          <button class="btn" id="undoBtn">撤销</button>
+          <button class="btn danger" id="clearBtn">清空</button>
+        </div>
+      </section>
+
+      <section class="section stack" id="actionControls" hidden>
+        <span class="label">处理</span>
+        <div class="model-list" id="modelList">
+          <button class="btn model-option active" data-model="opencv">
+            <strong>快速修复 - OpenCV</strong>
+            <span>无需下载，适合小水印和简单背景。</span>
+          </button>
+          <button class="btn model-option" data-model="lama">
+            <strong>LaMa - 本地模型</strong>
+            <span>速度较快；当前权重不兼容时会自动兜底。</span>
+          </button>
+          <button class="btn model-option" data-model="sd15">
+            <strong>生成式修复 - SD 1.5</strong>
+            <span>适合大块重绘；小水印通常优先用 LaMa。</span>
+          </button>
+        </div>
+        <textarea id="promptInput" placeholder="生成式修复提示词，可留空。例：clean original image, natural background, no watermark"></textarea>
+        <button class="btn primary" id="removeBtn">去除水印</button>
+        <span class="label">增强倍数</span>
+        <div class="seg">
+          <button class="scale active" data-scale="2">通用 2x</button>
+          <button class="scale" data-scale="4">通用/动漫 4x</button>
+        </div>
+        <p class="hint">2x 使用通用照片模型；4x 可选择通用照片模型或动漫插画模型。</p>
+        <span class="label">增强模型</span>
+        <div class="model-list">
+          <button class="btn model-option enhance-option active" data-enhancer="general">
+            <strong>通用照片增强 - Real-ESRGAN</strong>
+            <span>适合照片、真实图片和普通截图；支持 2x / 4x。</span>
+          </button>
+          <button class="btn model-option enhance-option" data-enhancer="anime">
+            <strong>动漫插画增强 - Anime 6B</strong>
+            <span>适合插画、线条图、二次元图片；固定 4x。</span>
+          </button>
+        </div>
+        <button class="btn" id="enhanceBtn" disabled>增强结果分辨率</button>
+        <button class="btn" id="resetBtn">重新选择图片</button>
+      </section>
+
+      <section class="section">
+        <span class="label">快捷键</span>
+        <p class="hint"><kbd>Ctrl</kbd> + <kbd>Z</kbd> 撤销，<kbd>[</kbd>/<kbd>]</kbd> 调整画笔，<kbd>D</kbd> 涂抹，<kbd>E</kbd> 擦除。</p>
+      </section>
+    </aside>
+
+    <main id="workspace">
+      <div class="empty" id="emptyState">
+        <div class="big">□</div>
+        <strong>把图片拖到这里开始</strong>
+        <span>涂抹水印区域后点击去除水印</span>
+      </div>
+      <div class="canvas-shell" id="canvasShell">
+        <canvas id="imageCanvas"></canvas>
+        <canvas id="maskCanvas"></canvas>
+      </div>
+      <div class="canvas-tools" id="floatingTools">
+        <button class="icon-btn" id="floatUndo" title="撤销">↶</button>
+        <button class="icon-btn" id="floatDraw" title="涂抹">✎</button>
+        <button class="icon-btn" id="floatErase" title="擦除">⌫</button>
+      </div>
+    </main>
+
+    <aside class="result-panel" id="resultPanel">
+      <section class="section">
+        <div class="row" style="justify-content:space-between">
+          <strong>处理结果</strong>
+          <button class="icon-btn" id="closeResult" title="关闭结果">×</button>
+        </div>
+      </section>
+      <section class="section stack">
+        <div class="compare" id="compareBox">
+          <img id="afterImg" alt="处理后">
+          <div class="before-layer" id="beforeLayer"><img id="beforeImg" alt="处理前"></div>
+          <div class="splitter" id="splitter"></div>
+          <span class="badge before">原图</span>
+          <span class="badge after">结果</span>
+        </div>
+        <div class="meta" id="resultMeta"></div>
+        <button class="btn primary" id="downloadBtn">下载结果图片</button>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<div class="overlay" id="loading">
+  <div class="dialog" style="place-items:center;text-align:center">
+    <div class="spinner"></div>
+    <strong id="loadingTitle">正在处理...</strong>
+    <span class="hint">大图或 CPU 推理会更慢，请保持窗口打开。</span>
+  </div>
+</div>
+
+<div class="download-modal" id="downloadModal">
+  <div class="dialog">
+    <strong>模型准备中</strong>
+    <span class="hint">首次运行可能需要下载模型，所有模型会保存到当前项目的 models 文件夹。</span>
+    <div class="progress-line">
+      <div class="progress-top"><span id="lamaName">LaMa 去水印模型</span><span id="lamaText">等待中</span></div>
+      <div class="bar"><span id="lamaBar"></span></div>
+    </div>
+    <div class="progress-line">
+      <div class="progress-top"><span id="esrName">Real-ESRGAN 超分模型</span><span id="esrText">等待中</span></div>
+      <div class="bar"><span id="esrBar"></span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = {
+  image: null,
+  imageDataUrl: "",
+  resultDataUrl: "",
+  enhancedDataUrl: "",
+  maskUrl: "",
+  brush: 34,
+  mode: "draw",
+  drawing: false,
+  last: null,
+  undo: [],
+  selectedScale: 2,
+  selectedModel: "opencv",
+  selectedEnhancer: "general",
+};
+
+const imageCanvas = $("imageCanvas");
+const maskCanvas = $("maskCanvas");
+const imgCtx = imageCanvas.getContext("2d");
+const maskCtx = maskCanvas.getContext("2d");
+
+function toast(message, type = "") {
+  const el = document.createElement("div");
+  el.className = "toast " + type;
+  el.textContent = message;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+function setBusy(on, text = "正在处理...") {
+  $("loadingTitle").textContent = text;
+  $("loading").classList.toggle("open", on);
+}
+
+function setTheme(theme) {
+  document.body.dataset.theme = theme;
+  localStorage.setItem("theme", theme);
+}
+setTheme(localStorage.getItem("theme") || "light");
+$("themeBtn").onclick = () => setTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
+
+async function checkHealth() {
+  try {
+    const r = await fetch("/api/health");
+    const data = await r.json();
+    $("gpuStatus").textContent = data.cuda_available ? `GPU: ${data.gpu_name}` : "CPU 模式";
+  } catch {
+    $("gpuStatus").textContent = "后端未连接";
+  }
+}
+checkHealth();
+
+async function loadModels() {
+  try {
+    const r = await fetch("/api/models");
+    const data = await r.json();
+    const byId = Object.fromEntries((data.models || []).map(m => [m.id, m]));
+    document.querySelectorAll(".model-option").forEach(btn => {
+      const model = byId[btn.dataset.model];
+      if (!model) return;
+      const status = model.downloaded ? "已就绪" : "未下载";
+      const note = model.note || "";
+      btn.querySelector("span").textContent = `${status}。${note}`;
+    });
+  } catch {
+    // The static defaults are still usable.
+  }
+}
+loadModels();
+
+function setMode(mode) {
+  state.mode = mode;
+  maskCanvas.classList.toggle("eraser", mode === "erase");
+  document.querySelectorAll(".mode").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+}
+
+function fitCanvas() {
+  if (!state.image) return;
+  const rect = $("workspace").getBoundingClientRect();
+  const maxW = Math.max(260, rect.width - 44);
+  const maxH = Math.max(260, rect.height - 44);
+  const scale = Math.min(maxW / state.image.width, maxH / state.image.height, 1);
+  const w = Math.max(1, Math.round(state.image.width * scale));
+  const h = Math.max(1, Math.round(state.image.height * scale));
+
+  imageCanvas.width = maskCanvas.width = w;
+  imageCanvas.height = maskCanvas.height = h;
+  $("canvasShell").style.width = w + "px";
+  $("canvasShell").style.height = h + "px";
+  imgCtx.clearRect(0, 0, w, h);
+  imgCtx.drawImage(state.image, 0, 0, w, h);
+
+  maskCtx.clearRect(0, 0, w, h);
+  if (state.maskUrl) {
+    const m = new Image();
+    m.onload = () => maskCtx.drawImage(m, 0, 0, w, h);
+    m.src = state.maskUrl;
+  }
+}
+
+function showEditor(show) {
+  $("emptyState").style.display = show ? "none" : "grid";
+  $("canvasShell").style.display = show ? "block" : "none";
+  $("floatingTools").style.display = show ? "flex" : "none";
+  $("editControls").hidden = !show;
+  $("actionControls").hidden = !show;
+}
+
+function loadFile(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    toast("请上传图片文件", "error");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      state.image = img;
+      state.imageDataUrl = e.target.result;
+      state.resultDataUrl = "";
+      state.enhancedDataUrl = "";
+      state.maskUrl = "";
+      state.undo = [];
+      showEditor(true);
+      closeResult(false);
+      $("enhanceBtn").disabled = false;
+      fitCanvas();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+$("uploadBox").onclick = () => $("fileInput").click();
+$("fileInput").onchange = e => loadFile(e.target.files[0]);
+for (const el of [$("uploadBox"), $("workspace")]) {
+  el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("drag"); });
+  el.addEventListener("dragleave", () => el.classList.remove("drag"));
+  el.addEventListener("drop", e => {
+    e.preventDefault();
+    el.classList.remove("drag");
+    loadFile(e.dataTransfer.files[0]);
+  });
+}
+
+function pointerPos(e) {
+  const rect = maskCanvas.getBoundingClientRect();
+  const p = e.touches ? e.touches[0] : e;
+  return {
+    x: (p.clientX - rect.left) * maskCanvas.width / rect.width,
+    y: (p.clientY - rect.top) * maskCanvas.height / rect.height,
+  };
+}
+
+function saveUndo() {
+  state.undo.push(maskCanvas.toDataURL("image/png"));
+  if (state.undo.length > 60) state.undo.shift();
+}
+
+function paint(pos, from = null) {
+  maskCtx.save();
+  maskCtx.lineWidth = state.brush;
+  maskCtx.lineCap = "round";
+  maskCtx.lineJoin = "round";
+  if (state.mode === "erase") {
+    maskCtx.globalCompositeOperation = "destination-out";
+  } else {
+    maskCtx.globalCompositeOperation = "source-over";
+    maskCtx.strokeStyle = "rgba(239, 68, 68, .58)";
+    maskCtx.fillStyle = "rgba(239, 68, 68, .58)";
+  }
+  if (from) {
+    maskCtx.beginPath();
+    maskCtx.moveTo(from.x, from.y);
+    maskCtx.lineTo(pos.x, pos.y);
+    maskCtx.stroke();
+  } else {
+    maskCtx.beginPath();
+    maskCtx.arc(pos.x, pos.y, state.brush / 2, 0, Math.PI * 2);
+    maskCtx.fill();
+  }
+  maskCtx.restore();
+  state.maskUrl = maskCanvas.toDataURL("image/png");
+}
+
+function beginDraw(e) {
+  if (!state.image) return;
+  e.preventDefault();
+  saveUndo();
+  state.drawing = true;
+  state.last = pointerPos(e);
+  paint(state.last);
+}
+function moveDraw(e) {
+  if (!state.drawing) return;
+  e.preventDefault();
+  const pos = pointerPos(e);
+  paint(pos, state.last);
+  state.last = pos;
+}
+function endDraw() {
+  if (!state.drawing) return;
+  state.drawing = false;
+  state.last = null;
+  state.maskUrl = maskCanvas.toDataURL("image/png");
+}
+maskCanvas.addEventListener("pointerdown", beginDraw);
+maskCanvas.addEventListener("pointermove", moveDraw);
+window.addEventListener("pointerup", endDraw);
+maskCanvas.addEventListener("touchstart", beginDraw, { passive: false });
+maskCanvas.addEventListener("touchmove", moveDraw, { passive: false });
+window.addEventListener("touchend", endDraw);
+
+function undo() {
+  const prev = state.undo.pop();
+  if (!prev) return;
+  state.maskUrl = prev;
+  const img = new Image();
+  img.onload = () => {
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    maskCtx.drawImage(img, 0, 0, maskCanvas.width, maskCanvas.height);
+  };
+  img.src = prev;
+}
+
+$("brushSize").oninput = e => {
+  state.brush = Number(e.target.value);
+  $("brushValue").textContent = state.brush;
+};
+document.querySelectorAll(".mode").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll(".scale").forEach(b => b.onclick = () => {
+  state.selectedScale = Number(b.dataset.scale);
+  document.querySelectorAll(".scale").forEach(x => x.classList.toggle("active", x === b));
+  if (state.selectedScale === 2 && state.selectedEnhancer === "anime") {
+    state.selectedEnhancer = "general";
+    document.querySelectorAll(".enhance-option").forEach(x => x.classList.toggle("active", x.dataset.enhancer === "general"));
+  }
+});
+document.querySelectorAll(".enhance-option").forEach(b => b.onclick = () => {
+  state.selectedEnhancer = b.dataset.enhancer;
+  document.querySelectorAll(".enhance-option").forEach(x => x.classList.toggle("active", x === b));
+  if (state.selectedEnhancer === "anime") {
+    state.selectedScale = 4;
+    document.querySelectorAll(".scale").forEach(x => x.classList.toggle("active", x.dataset.scale === "4"));
+  }
+});
+document.querySelectorAll(".model-option:not(.enhance-option)").forEach(b => b.onclick = () => {
+  state.selectedModel = b.dataset.model;
+  document.querySelectorAll(".model-option:not(.enhance-option)").forEach(x => x.classList.toggle("active", x === b));
+});
+$("undoBtn").onclick = undo;
+$("floatUndo").onclick = undo;
+$("floatDraw").onclick = () => setMode("draw");
+$("floatErase").onclick = () => setMode("erase");
+$("clearBtn").onclick = () => {
+  saveUndo();
+  maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+  state.maskUrl = "";
+};
+$("resetBtn").onclick = () => {
+  state.image = null;
+  state.imageDataUrl = "";
+  state.resultDataUrl = "";
+  state.enhancedDataUrl = "";
+  state.maskUrl = "";
+  state.undo = [];
+  $("fileInput").value = "";
+  $("enhanceBtn").disabled = true;
+  showEditor(false);
+  closeResult(false);
+};
+
+function exportMask() {
+  const out = document.createElement("canvas");
+  out.width = state.image.width;
+  out.height = state.image.height;
+  const ctx = out.getContext("2d");
+  if (!state.maskUrl) return out.toDataURL("image/png");
+
+  const tmp = document.createElement("canvas");
+  tmp.width = maskCanvas.width;
+  tmp.height = maskCanvas.height;
+  const tctx = tmp.getContext("2d");
+  tctx.drawImage(maskCanvas, 0, 0);
+  const data = tctx.getImageData(0, 0, tmp.width, tmp.height);
+  for (let i = 0; i < data.data.length; i += 4) {
+    const alpha = data.data[i + 3];
+    data.data[i] = data.data[i + 1] = data.data[i + 2] = alpha > 8 ? 255 : 0;
+    data.data[i + 3] = 255;
+  }
+  tctx.putImageData(data, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tmp, 0, 0, out.width, out.height);
+  return out.toDataURL("image/png");
+}
+
+$("removeBtn").onclick = async () => {
+  if (!state.imageDataUrl) return toast("请先上传图片", "error");
+  const modelName = state.selectedModel === "sd15" ? "生成式修复处理中，首次使用会下载模型..." : "正在去除水印...";
+  setBusy(true, modelName);
+  $("removeBtn").disabled = true;
+  try {
+    const resp = await fetch("/api/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        image: state.imageDataUrl,
+        mask: exportMask(),
+        model: state.selectedModel,
+        prompt: $("promptInput").value.trim(),
+      }),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || "处理失败");
+    state.resultDataUrl = data.result;
+    state.enhancedDataUrl = "";
+    showResult(data);
+    loadModels();
+    $("enhanceBtn").disabled = false;
+  } catch (err) {
+    toast("去水印失败: " + err.message, "error");
+  } finally {
+    $("removeBtn").disabled = false;
+    setBusy(false);
+  }
+};
+
+$("enhanceBtn").onclick = async () => {
+  const sourceImage = state.resultDataUrl || state.imageDataUrl;
+  if (!sourceImage) return toast("请先上传图片", "error");
+  const enhancingOriginal = !state.resultDataUrl;
+  const scale = state.selectedScale;
+  const enhancerName = state.selectedEnhancer === "anime" ? "动漫插画增强" : "通用照片增强";
+  setBusy(true, `正在${enhancingOriginal ? "原图" : "结果"}${enhancerName} ${scale}x...`);
+  $("enhanceBtn").disabled = true;
+  try {
+    const resp = await fetch("/api/enhance", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: sourceImage, scale, enhancer: state.selectedEnhancer }),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || "增强失败");
+    state.enhancedDataUrl = data.result;
+    showResult(data, true, enhancingOriginal);
+  } catch (err) {
+    toast("增强失败: " + err.message, "error");
+  } finally {
+    $("enhanceBtn").disabled = false;
+    setBusy(false);
+  }
+};
+
+function showResult(data, enhanced = false, enhancedOriginal = false) {
+  $("resultPanel").classList.add("open");
+  $("beforeImg").src = enhanced ? (enhancedOriginal ? state.imageDataUrl : state.resultDataUrl) : state.imageDataUrl;
+  $("afterImg").src = enhanced ? state.enhancedDataUrl : state.resultDataUrl;
+  $("beforeLayer").style.width = "50%";
+  $("splitter").style.left = "50%";
+  const size = enhanced ? data.enhanced_size : data.size;
+  const enhancerLabel = data.enhancer === "anime" ? "动漫插画增强" : "通用照片增强";
+  $("resultMeta").innerHTML = `
+    <div><span>处理耗时</span><strong>${data.time}s</strong></div>
+    <div><span>输出尺寸</span><strong>${size[0]} × ${size[1]}</strong></div>
+    <div><span>当前结果</span><strong>${enhanced ? (enhancedOriginal ? "原图超分增强" : "结果超分增强") : "去水印"}</strong></div>
+    ${data.model ? `<div><span>使用模型</span><strong>${data.model}</strong></div>` : ""}
+    ${enhanced ? `<div><span>增强模型</span><strong>${enhancerLabel}</strong></div>` : ""}
+  `;
+}
+
+function closeResult(clear = false) {
+  $("resultPanel").classList.remove("open");
+  if (clear) {
+    state.resultDataUrl = "";
+    state.enhancedDataUrl = "";
+    $("enhanceBtn").disabled = true;
+  }
+}
+$("closeResult").onclick = () => closeResult(false);
+$("downloadBtn").onclick = () => {
+  const src = state.enhancedDataUrl || state.resultDataUrl;
+  if (!src) return toast("没有可下载的结果", "error");
+  const a = document.createElement("a");
+  a.href = src;
+  a.download = state.enhancedDataUrl
+    ? (state.resultDataUrl ? "watermark_removed_enhanced.png" : "image_enhanced.png")
+    : "watermark_removed.png";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+};
+
+let splitting = false;
+function setSplit(clientX) {
+  const box = $("compareBox").getBoundingClientRect();
+  let pct = ((clientX - box.left) / box.width) * 100;
+  pct = Math.max(5, Math.min(95, pct));
+  $("beforeLayer").style.width = pct + "%";
+  $("splitter").style.left = pct + "%";
+}
+$("splitter").addEventListener("pointerdown", e => { splitting = true; $("splitter").setPointerCapture(e.pointerId); });
+window.addEventListener("pointermove", e => { if (splitting) setSplit(e.clientX); });
+window.addEventListener("pointerup", () => splitting = false);
+
+document.addEventListener("keydown", e => {
+  if (!state.image) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
+  if (e.key === "[") { state.brush = Math.max(4, state.brush - 5); $("brushSize").value = state.brush; $("brushValue").textContent = state.brush; }
+  if (e.key === "]") { state.brush = Math.min(150, state.brush + 5); $("brushSize").value = state.brush; $("brushValue").textContent = state.brush; }
+  if (e.key.toLowerCase() === "d") setMode("draw");
+  if (e.key.toLowerCase() === "e") setMode("erase");
+});
+window.addEventListener("resize", fitCanvas);
+
+function updateProgress(prefix, data) {
+  const pct = Math.round(data.percent || 0);
+  $(prefix + "Bar").style.width = pct + "%";
+  $(prefix + "Text").textContent = data.status === "downloading" ? `${pct}% ${data.message || ""}` :
+    data.status === "done" ? "已就绪" :
+    data.status === "error" ? "失败" : "等待中";
+}
+
+function watchDownloads() {
+  let es;
+  try {
+    es = new EventSource("/api/download-progress");
+    es.onmessage = event => {
+      const data = JSON.parse(event.data);
+      if (data.any_active) $("downloadModal").classList.add("open");
+      if (data.lama) updateProgress("lama", data.lama);
+      if (data.esrgan) updateProgress("esr", data.esrgan);
+      if (!data.any_active) setTimeout(() => $("downloadModal").classList.remove("open"), 900);
+    };
+    es.onerror = () => { es.close(); setTimeout(watchDownloads, 5000); };
+  } catch {}
+}
+setTimeout(watchDownloads, 1200);
+</script>
+</body>
+</html>
