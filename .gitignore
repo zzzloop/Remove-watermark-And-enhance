@@ -22,7 +22,6 @@ __pycache__/
 *$py.class
 
 # Local test images / scratch outputs
-测试水印图*.png
 outputs/
 results/
 
