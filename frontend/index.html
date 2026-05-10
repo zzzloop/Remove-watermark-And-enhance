@@ -337,6 +337,8 @@
         </div>
         <textarea id="promptInput" placeholder="生成式修复提示词，可留空。例：clean original image, natural background, no watermark"></textarea>
         <button class="btn primary" id="removeBtn">去除水印</button>
+        <button class="btn" id="cutoutBtn" disabled>抠出主体透明背景</button>
+        <p class="hint">抠图优先使用 rembg/U2-Net，本地没有模型会自动下载到 models/rembg；只有模型或依赖加载失败时才使用 OpenCV GrabCut 兜底。适合主体清晰的人像、商品和普通物体。</p>
         <span class="label">增强倍数</span>
         <div class="seg">
           <button class="scale active" data-scale="2">通用 2x</button>
@@ -433,6 +435,7 @@ const state = {
   imageDataUrl: "",
   resultDataUrl: "",
   enhancedDataUrl: "",
+  cutoutDataUrl: "",
   maskUrl: "",
   brush: 34,
   mode: "draw",
@@ -549,10 +552,12 @@ function loadFile(file) {
       state.imageDataUrl = e.target.result;
       state.resultDataUrl = "";
       state.enhancedDataUrl = "";
+      state.cutoutDataUrl = "";
       state.maskUrl = "";
       state.undo = [];
       showEditor(true);
       closeResult(false);
+      $("cutoutBtn").disabled = false;
       $("enhanceBtn").disabled = false;
       fitCanvas();
     };
@@ -692,9 +697,11 @@ $("resetBtn").onclick = () => {
   state.imageDataUrl = "";
   state.resultDataUrl = "";
   state.enhancedDataUrl = "";
+  state.cutoutDataUrl = "";
   state.maskUrl = "";
   state.undo = [];
   $("fileInput").value = "";
+  $("cutoutBtn").disabled = true;
   $("enhanceBtn").disabled = true;
   showEditor(false);
   closeResult(false);
@@ -755,6 +762,31 @@ $("removeBtn").onclick = async () => {
   }
 };
 
+$("cutoutBtn").onclick = async () => {
+  if (!state.imageDataUrl) return toast("请先上传图片", "error");
+  setBusy(true, "正在抠出主体透明背景...");
+  $("cutoutBtn").disabled = true;
+  try {
+    const resp = await fetch("/api/cutout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: state.imageDataUrl }),
+    });
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || "抠图失败");
+    state.cutoutDataUrl = data.result;
+    state.resultDataUrl = data.result;
+    state.enhancedDataUrl = "";
+    showResult(data, false, false, "主体抠图透明背景");
+    $("enhanceBtn").disabled = false;
+  } catch (err) {
+    toast("抠图失败: " + err.message, "error");
+  } finally {
+    $("cutoutBtn").disabled = false;
+    setBusy(false);
+  }
+};
+
 $("enhanceBtn").onclick = async () => {
   const sourceImage = state.resultDataUrl || state.imageDataUrl;
   if (!sourceImage) return toast("请先上传图片", "error");
@@ -781,7 +813,7 @@ $("enhanceBtn").onclick = async () => {
   }
 };
 
-function showResult(data, enhanced = false, enhancedOriginal = false) {
+function showResult(data, enhanced = false, enhancedOriginal = false, resultLabel = "") {
   $("resultPanel").classList.add("open");
   $("beforeImg").src = enhanced ? (enhancedOriginal ? state.imageDataUrl : state.resultDataUrl) : state.imageDataUrl;
   $("afterImg").src = enhanced ? state.enhancedDataUrl : state.resultDataUrl;
@@ -792,7 +824,7 @@ function showResult(data, enhanced = false, enhancedOriginal = false) {
   $("resultMeta").innerHTML = `
     <div><span>处理耗时</span><strong>${data.time}s</strong></div>
     <div><span>输出尺寸</span><strong>${size[0]} × ${size[1]}</strong></div>
-    <div><span>当前结果</span><strong>${enhanced ? (enhancedOriginal ? "原图超分增强" : "结果超分增强") : "去水印"}</strong></div>
+    <div><span>当前结果</span><strong>${resultLabel || (enhanced ? (enhancedOriginal ? "原图超分增强" : "结果超分增强") : "去水印")}</strong></div>
     ${data.model ? `<div><span>使用模型</span><strong>${data.model}</strong></div>` : ""}
     ${enhanced ? `<div><span>增强模型</span><strong>${enhancerLabel}</strong></div>` : ""}
   `;
@@ -803,6 +835,7 @@ function closeResult(clear = false) {
   if (clear) {
     state.resultDataUrl = "";
     state.enhancedDataUrl = "";
+    state.cutoutDataUrl = "";
     $("enhanceBtn").disabled = true;
   }
 }
@@ -813,8 +846,8 @@ $("downloadBtn").onclick = () => {
   const a = document.createElement("a");
   a.href = src;
   a.download = state.enhancedDataUrl
-    ? (state.resultDataUrl ? "watermark_removed_enhanced.png" : "image_enhanced.png")
-    : "watermark_removed.png";
+    ? (state.cutoutDataUrl ? "subject_cutout_enhanced.png" : (state.resultDataUrl ? "watermark_removed_enhanced.png" : "image_enhanced.png"))
+    : (state.cutoutDataUrl ? "subject_cutout.png" : "watermark_removed.png");
   document.body.appendChild(a);
   a.click();
   a.remove();

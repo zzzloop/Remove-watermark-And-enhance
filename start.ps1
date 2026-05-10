@@ -113,7 +113,7 @@ function Run-Logged {
 }
 
 function Test-Dependencies {
-    & $Python -c "import fastapi, uvicorn, PIL, numpy, cv2, torch, diffusers, transformers, accelerate, safetensors" *> $null
+    & $Python -c "import importlib.util; import fastapi, uvicorn, PIL, numpy, cv2, torch, diffusers, transformers, accelerate, safetensors; missing=[m for m in ('onnxruntime','rembg') if importlib.util.find_spec(m) is None]; raise SystemExit(1 if missing else 0)" *> $null
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -141,14 +141,15 @@ $depsOk = Test-Dependencies
 
 if (-not $depsOk) {
     Write-Step "Dependencies missing or version mismatch. Installing into selected Python environment..."
+    Write-Step "pip may spend time resolving packages before the progress bar appears. Download progress is shown once wheel files start downloading."
 
     $req = Join-Path $AppRoot "backend\requirements.txt"
-    $code = Run-Logged -Exe $Python -ArgList @("-m", "pip", "install", "--progress-bar", "on", "--no-warn-script-location", "-r", $req, "-i", "https://pypi.tuna.tsinghua.edu.cn/simple")
+    $code = Run-Logged -Exe $Python -ArgList @("-m", "pip", "install", "--verbose", "--progress-bar", "on", "--no-cache-dir", "--no-warn-script-location", "-r", $req, "-i", "https://pypi.tuna.tsinghua.edu.cn/simple")
     if ($code -ne 0) {
         $depsOk = Test-Dependencies
         if (-not $depsOk) {
             Write-Step "Tsinghua mirror failed. Trying default PyPI..."
-            $code = Run-Logged -Exe $Python -ArgList @("-m", "pip", "install", "--progress-bar", "on", "--no-warn-script-location", "-r", $req)
+            $code = Run-Logged -Exe $Python -ArgList @("-m", "pip", "install", "--verbose", "--progress-bar", "on", "--no-cache-dir", "--no-warn-script-location", "-r", $req)
         }
     }
     $depsOk = Test-Dependencies

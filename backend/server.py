@@ -35,6 +35,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 from diffusion_inpaint import inpaint_diffusion, model_status as diffusion_model_status
 from enhance import enhance, get_download_progress as esrgan_progress
+from background_remove import remove_background
 from lama_inpaint import get_download_progress as lama_progress, inpaint, inpaint_lama, inpaint_opencv
 
 
@@ -271,6 +272,37 @@ async def enhance_resolution(request: Request):
                 "original_size": [orig_w, orig_h],
                 "enhanced_size": [new_w, new_h],
                 "enhancer": enhancer,
+            }
+        )
+    except Exception as exc:
+        traceback.print_exc()
+        return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/cutout")
+async def cutout_subject(request: Request):
+    t0 = time.time()
+    try:
+        payload = await read_payload(request)
+        image = payload.get("image")
+        if not image:
+            return JSONResponse({"success": False, "error": "缺少 image 参数"}, status_code=400)
+
+        img = base64_to_image(image).convert("RGBA")
+        orig_w, orig_h = img.size
+        print(f"[API] 收到主体抠图请求: {orig_w}x{orig_h}")
+
+        result_img = remove_background(img)
+
+        elapsed = time.time() - t0
+        print(f"[API] 主体抠图完成，耗时 {elapsed:.2f}s")
+        return JSONResponse(
+            {
+                "success": True,
+                "result": f"data:image/png;base64,{image_to_base64(result_img, 'PNG')}",
+                "time": round(elapsed, 2),
+                "size": [orig_w, orig_h],
+                "model": "cutout",
             }
         )
     except Exception as exc:
