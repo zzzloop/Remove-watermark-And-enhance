@@ -307,6 +307,14 @@ function Get-PythonWheelTag {
 function Download-FileWithResume {
     param([string]$Url, [string]$OutFile, [string]$Activity, [Int64]$MinBytes = 1)
 
+    if (Test-Path $OutFile) {
+        $existingSize = (Get-Item -LiteralPath $OutFile).Length
+        if ($existingSize -ge $MinBytes) {
+            Write-Step "本地文件已存在且大小达标，跳过下载: $OutFile ($existingSize bytes)"
+            return $true
+        }
+    }
+
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
     if (-not $curl) {
         Write-Step "[ERROR] 未找到 Windows curl.exe，无法对大文件做断点续传下载。"
@@ -345,6 +353,11 @@ function Download-FileWithResume {
 }
 
 function Install-CudaTorchFromWheelhouse {
+    if (Test-FixedCudaTorchStack) {
+        Write-Step "固定 CUDA PyTorch 版本已经安装完成，跳过 torch wheel 安装。"
+        return $true
+    }
+
     $pyTag = Get-PythonWheelTag
     if ($pyTag -notin @("cp310", "cp311", "cp312")) {
         Write-Step "当前 Python wheel 标签为 $pyTag，启动器只为 Python 3.10-3.12 自动构造 CUDA wheel 下载链接。"
@@ -370,11 +383,16 @@ function Install-CudaTorchFromWheelhouse {
 
     Write-Step "CUDA PyTorch wheel 已下载完成，开始从本地缓存安装。"
     $code = Run-LoggedWithProgress -Exe $Python -ArgList @("-m", "pip", "install", "--verbose", "--progress-bar", "on", "--no-warn-script-location", "--retries", "10", "--timeout", "120", $torchWheel, $torchVisionWheel, "numpy==$RequiredNumpy", "-i", "https://pypi.tuna.tsinghua.edu.cn/simple") -Activity "Installing local CUDA PyTorch wheels"
+    if (Test-FixedCudaTorchStack) {
+        Write-Step "固定 CUDA PyTorch 版本已确认可用，继续安装项目其他依赖。"
+        return $true
+    }
     if ($code -ne 0) {
         Write-Step "[ERROR] 本地 CUDA PyTorch wheel 安装失败。"
         return $false
     }
-    return (Test-TorchCuda)
+    Write-Step "[ERROR] 本地 CUDA PyTorch wheel 安装命令返回成功，但版本/CUDA 校验未通过。"
+    return $false
 }
 
 function Test-Dependencies {
@@ -395,10 +413,40 @@ function Get-Torch-Cuda-Info {
     return $out
 }
 
-function Test-TorchCuda {
-    $info = Get-Torch-Cuda-Info
-    $parts = $info -split "\|", 3
-    return ($parts.Count -ge 2 -and $parts[1] -eq "True")
+function Test-FixedCudaTorchStack {
+    $script = @"
+import sys
+try:
+    import torch, torchvision, numpy
+except Exception as exc:
+    print('import failed: {}'.format(exc))
+    sys.exit(1)
+expected_torch = '$TorchVersion'
+expected_torchvision = '$TorchVisionVersion'
+expected_numpy = '$RequiredNumpy'
+ok = (
+    torch.__version__ == expected_torch
+    and torchvision.__version__ == expected_torchvision
+    and numpy.__version__ == expected_numpy
+    and torch.cuda.is_available()
+)
+device = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'
+print('torch={} torchvision={} numpy={} cuda={} device={}'.format(
+    torch.__version__,
+    torchvision.__version__,
+    numpy.__version__,
+    torch.cuda.is_available(),
+    device,
+))
+sys.exit(0 if ok else 1)
+"@
+    $out = & $Python -c $script 2>&1
+    if ($out) {
+        foreach ($line in $out) {
+            Write-Step $line
+        }
+    }
+    return ($LASTEXITCODE -eq 0)
 }
 
 function Install-CudaTorch {
@@ -408,8 +456,8 @@ function Install-CudaTorch {
     Write-Step "默认选择 PyTorch CUDA 11.8 wheel: $TorchIndexUrl"
     Write-Step "CUDA 11.8 wheel 对 Python 3.10 更成熟，通常体积也比更新 CUDA wheel 更小。"
     Write-Step "固定版本: torch==$TorchVersion, torchvision==$TorchVisionVersion。"
-    if (Test-TorchCuda) {
-        Write-Step "CUDA PyTorch is already ready: $(Get-Torch-Cuda-Info)"
+    if (Test-FixedCudaTorchStack) {
+        Write-Step "固定 CUDA PyTorch 版本已经可用，继续安装项目其他依赖。"
         return $true
     }
     if (Install-CudaTorchFromWheelhouse) {
@@ -441,6 +489,58 @@ function Repair-NumpyVersion {
     return (Test-NumpyVersion)
 }
 
+function Install-ProjectDependencies {
+    $req = Join-Path $AppRoot "backend\requirements.txt"
+    $torchConstraints = Join-Path $AppRoot "backend\torch-cu118-constraints.txt"
+
+    Write-Step "Dependencies missing or version mismatch. Installing into selected Python environment..."
+    Write-Step "Dependency install is constrained to torch==$TorchVersion, torchvision==$TorchVisionVersion and numpy==$RequiredNumpy."
+    Write-Step "Installing dependencies with progress. pip shows exact progress once wheel downloads start."
+
+    $primaryArgs = @(
+        "-m", "pip", "install",
+        "--verbose",
+        "--progress-bar", "on",
+        "--no-warn-script-location",
+        "--retries", "10",
+        "--timeout", "120",
+        "-r", $req,
+        "-c", $torchConstraints,
+        "-i", "https://pypi.tuna.tsinghua.edu.cn/simple",
+        "--extra-index-url", $TorchIndexUrl
+    )
+    $code = Run-LoggedWithProgress -Exe $Python -ArgList $primaryArgs -Activity "Installing Python dependencies"
+    if ((Test-Dependencies) -and (Test-FixedCudaTorchStack)) {
+        Write-Step "Project dependencies are ready."
+        return $true
+    }
+
+    if ($code -ne 0) {
+        Write-Step "Tsinghua mirror install did not finish cleanly. Trying default PyPI once with the same version constraints..."
+        $fallbackArgs = @(
+            "-m", "pip", "install",
+            "--verbose",
+            "--progress-bar", "on",
+            "--no-warn-script-location",
+            "--retries", "10",
+            "--timeout", "120",
+            "-r", $req,
+            "-c", $torchConstraints,
+            "--extra-index-url", $TorchIndexUrl
+        )
+        $code = Run-LoggedWithProgress -Exe $Python -ArgList $fallbackArgs -Activity "Installing Python dependencies"
+        if ((Test-Dependencies) -and (Test-FixedCudaTorchStack)) {
+            Write-Step "Project dependencies are ready."
+            return $true
+        }
+    }
+
+    Write-Step "[ERROR] Dependency installation failed or fixed CUDA PyTorch stack was changed."
+    Test-NumpyVersion | Out-Null
+    Test-FixedCudaTorchStack | Out-Null
+    return $false
+}
+
 Clear-Content -LiteralPath $LogFile -ErrorAction SilentlyContinue
 Write-UiLine "==============================================================" DarkGray
 Write-UiLine "Watermark Remover" Cyan
@@ -461,7 +561,7 @@ Write-Step "[1/3] Python: $Python"
 & $Python --version 2>&1 | Tee-Object -FilePath $LogFile -Append
 
 Write-Step "[2/3] Checking dependencies..."
-$torchOk = Test-TorchCuda
+$torchOk = Test-FixedCudaTorchStack
 if (-not $torchOk) {
     $torchOk = Install-CudaTorch
     if (-not $torchOk) {
@@ -473,30 +573,9 @@ if (-not $torchOk) {
 $depsOk = Test-Dependencies
 
 if (-not $depsOk) {
-    Write-Step "Dependencies missing or version mismatch. Installing into selected Python environment..."
-    Write-Step "Installing dependencies with progress. The activity bar moves while pip resolves packages; pip shows exact progress once wheel downloads start."
-
-    $req = Join-Path $AppRoot "backend\requirements.txt"
-    $torchConstraints = Join-Path $AppRoot "backend\torch-cu118-constraints.txt"
-    Write-Step "Dependency install is constrained to torch==$TorchVersion and torchvision==$TorchVisionVersion to prevent pip from replacing CUDA torch."
-    $code = Run-LoggedWithProgress -Exe $Python -ArgList @("-m", "pip", "install", "--verbose", "--progress-bar", "on", "--no-warn-script-location", "-r", $req, "-c", $torchConstraints, "-i", "https://pypi.tuna.tsinghua.edu.cn/simple", "--extra-index-url", $TorchIndexUrl) -Activity "Installing Python dependencies"
-    if ($code -ne 0) {
-        $depsOk = Test-Dependencies
-        if (-not $depsOk) {
-            Write-Step "Tsinghua mirror failed. Trying default PyPI..."
-            $code = Run-LoggedWithProgress -Exe $Python -ArgList @("-m", "pip", "install", "--verbose", "--progress-bar", "on", "--no-warn-script-location", "-r", $req, "-c", $torchConstraints, "--extra-index-url", $TorchIndexUrl) -Activity "Installing Python dependencies"
-        }
-    }
-    $depsOk = Test-Dependencies
-    if ($depsOk -and -not (Test-TorchCuda)) {
-        Write-Step "[ERROR] Dependencies installed, but CUDA PyTorch was replaced or is unavailable."
-        Write-Step "Reinstalling fixed CUDA torch once: torch==$TorchVersion, torchvision==$TorchVisionVersion."
-        $torchOk = Install-CudaTorch
-        $depsOk = (Test-Dependencies -and (Test-TorchCuda))
-    }
-    if (-not $depsOk) {
-        Write-Step "[ERROR] Dependency installation failed."
-        Test-NumpyVersion | Out-Null
+    if (Install-ProjectDependencies) {
+        $depsOk = $true
+    } else {
         Read-Host "Press Enter to exit"
         exit 1
     }

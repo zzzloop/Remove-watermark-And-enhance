@@ -80,6 +80,7 @@ def _model_spec(model_name="general", scale=2):
             "arch": "swinir_large",
             "network": "SwinIR-L nearest+conv real-world GAN",
             "size_hint": "约 142MB",
+            "min_bytes": 80 * 1024 * 1024,
         }
     if model_name in ("ultrasharp", "4x_ultrasharp"):
         return {
@@ -90,6 +91,7 @@ def _model_spec(model_name="general", scale=2):
             "arch": "spandrel_ultrasharp",
             "network": "spandrel ESRGAN 64nf 23nb",
             "size_hint": "约 67MB",
+            "min_bytes": 30 * 1024 * 1024,
         }
     if model_name in ("realesrgan4", "general", "photo"):
         return {
@@ -101,6 +103,7 @@ def _model_spec(model_name="general", scale=2):
             "arch": "realesrganer_rrdb",
             "network": "RealESRGANer + basicsr RRDBNet 23 blocks",
             "size_hint": "约 64MB",
+            "min_bytes": 30 * 1024 * 1024,
         }
     if model_name in ("anime", "realesrgan_anime"):
         return {
@@ -112,8 +115,42 @@ def _model_spec(model_name="general", scale=2):
             "arch": "realesrganer_anime6b",
             "network": "RealESRGANer + basicsr RRDBNet 6 blocks",
             "size_hint": "约 18MB",
+            "min_bytes": 8 * 1024 * 1024,
         }
     raise ValueError("增强模型仅支持 R-ESRGAN 4x+、R-ESRGAN 4x+ Anime6B、4x-UltraSharp 或 SwinIR-L 4x")
+
+
+def _quarantine_model_file(model_path, reason):
+    if not os.path.exists(model_path):
+        return
+    bad_path = f"{model_path}.bad-{time.strftime('%Y%m%d-%H%M%S')}"
+    print(f"[ESRGAN] 模型文件疑似损坏，已移到: {bad_path}")
+    print(f"[ESRGAN] 损坏原因: {reason}")
+    try:
+        os.replace(model_path, bad_path)
+    except Exception:
+        try:
+            os.remove(model_path)
+            print("[ESRGAN] 无法重命名损坏模型，已删除旧文件。")
+        except Exception as exc:
+            raise RuntimeError(f"无法处理损坏模型文件: {model_path}: {exc}") from exc
+
+
+def _is_corrupt_model_error(exc):
+    text = f"{type(exc).__name__}: {exc}".lower()
+    markers = (
+        "pytorchstreamreader failed",
+        "failed finding central directory",
+        "failed reading zip archive",
+        "not a zip archive",
+        "unexpected eof",
+        "pickle data was truncated",
+        "ran out of input",
+        "invalid load key",
+        "invalid header",
+        "bad magic number",
+    )
+    return any(marker in text for marker in markers)
 
 
 def download_model(scale=2, model_name="general", progress_callback=None):
@@ -131,13 +168,18 @@ def download_model(scale=2, model_name="general", progress_callback=None):
     model_url = spec["url"]
     label = spec["label"]
     part_path = model_path + ".part"
+    min_bytes = spec.get("min_bytes", 1024 * 1024)
 
     if os.path.exists(model_path):
-        print(f"[ESRGAN] 模型已存在: {model_path}")
-        _set_progress(active=False, status="done", percent=100, message="模型已就绪")
-        if progress_callback:
-            progress_callback(label, 100, 0, 0, "done")
-        return model_path
+        file_size = os.path.getsize(model_path)
+        if file_size < min_bytes:
+            _quarantine_model_file(model_path, f"文件太小: {file_size} bytes，预期至少 {min_bytes} bytes")
+        else:
+            print(f"[ESRGAN] 模型已存在: {model_path}")
+            _set_progress(active=False, status="done", percent=100, message="模型已就绪")
+            if progress_callback:
+                progress_callback(label, 100, 0, 0, "done")
+            return model_path
 
     print(f"[ESRGAN] 正在下载 {label} 到 {model_path} ...")
     print(f"[ESRGAN] 模型大小{spec.get('size_hint', '未知')}，请耐心等待...")
@@ -169,6 +211,9 @@ def download_model(scale=2, model_name="general", progress_callback=None):
         if os.path.exists(part_path):
             os.remove(part_path)
         urllib.request.urlretrieve(model_url, part_path, progress_hook)
+        file_size = os.path.getsize(part_path)
+        if file_size < min_bytes:
+            raise RuntimeError(f"模型下载不完整: {file_size} bytes，预期至少 {min_bytes} bytes")
         os.replace(part_path, model_path)
         print(f"\n[ESRGAN] 下载完成!")
         _set_progress(active=False, status="done", percent=100, message="下载完成")
@@ -382,17 +427,24 @@ def load_model(scale=2, model_name="general"):
 
     _device_esr = get_device()
 
-    # 下载模型
-    model_path = download_model(scale, model_name)
-
-    if spec.get("arch") == "swinir_large":
-        return load_swinir_model(model_path, spec)
-    if spec.get("arch") == "spandrel_ultrasharp":
-        return load_ultrasharp_model(model_path, spec)
-    if spec.get("arch") == "realesrganer_rrdb":
-        return load_realesrganer_model(model_path, spec, num_block=23, cache_name="realesrgan_x4plus")
-    if spec.get("arch") == "realesrganer_anime6b":
-        return load_realesrganer_model(model_path, spec, num_block=6, cache_name="anime6b_realesrganer")
+    for attempt in range(2):
+        model_path = download_model(scale, model_name)
+        try:
+            if spec.get("arch") == "swinir_large":
+                return load_swinir_model(model_path, spec)
+            if spec.get("arch") == "spandrel_ultrasharp":
+                return load_ultrasharp_model(model_path, spec)
+            if spec.get("arch") == "realesrganer_rrdb":
+                return load_realesrganer_model(model_path, spec, num_block=23, cache_name="realesrgan_x4plus")
+            if spec.get("arch") == "realesrganer_anime6b":
+                return load_realesrganer_model(model_path, spec, num_block=6, cache_name="anime6b_realesrganer")
+            break
+        except Exception as exc:
+            if attempt == 0 and _is_corrupt_model_error(exc):
+                _quarantine_model_file(model_path, str(exc))
+                _set_progress(active=True, status="downloading", percent=0, message="模型文件损坏，正在重新下载...")
+                continue
+            raise
 
     print(f"[ESRGAN] 正在加载 {spec['label']} ({spec.get('network', 'RRDBNet')})...")
     model = RRDBNet(in_nc=3, out_nc=3, nf=64, nb=spec["nb"], gc=32, scale=spec["scale"])
