@@ -8,10 +8,11 @@ $LibDir = Join-Path $AppRoot "python_libs"
 $ModelsDir = Join-Path $AppRoot "models"
 $CacheDir = Join-Path $AppRoot ".cache"
 $TmpDir = Join-Path $CacheDir "tmp"
+$WheelhouseDir = Join-Path $CacheDir "wheelhouse"
 $LogFile = Join-Path $AppRoot "startup.log"
 $Port = 8000
 
-New-Item -ItemType Directory -Force $LibDir, $ModelsDir, $CacheDir, $TmpDir | Out-Null
+New-Item -ItemType Directory -Force $LibDir, $ModelsDir, $CacheDir, $TmpDir, $WheelhouseDir | Out-Null
 
 $env:HF_HOME = Join-Path $ModelsDir ".cache\huggingface"
 $env:HUGGINGFACE_HUB_CACHE = Join-Path $ModelsDir ".cache\huggingface\hub"
@@ -297,6 +298,85 @@ function Run-LoggedWithProgress {
     return $process.ExitCode
 }
 
+function Get-PythonWheelTag {
+    $tag = & $Python -c "import sys; print('cp{}{}'.format(sys.version_info.major, sys.version_info.minor))" 2>$null
+    if (-not $tag) { return $null }
+    return $tag.Trim()
+}
+
+function Download-FileWithResume {
+    param([string]$Url, [string]$OutFile, [string]$Activity, [Int64]$MinBytes = 1)
+
+    $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+    if (-not $curl) {
+        Write-Step "[ERROR] 未找到 Windows curl.exe，无法对大文件做断点续传下载。"
+        return $false
+    }
+
+    Write-Step "断点续传下载: $Url"
+    Write-Step "保存到: $OutFile"
+    $curlArgs = @(
+        "-L",
+        "--fail",
+        "--ssl-no-revoke",
+        "--continue-at", "-",
+        "--retry", "20",
+        "--retry-all-errors",
+        "--retry-delay", "5",
+        "--connect-timeout", "30",
+        "--speed-time", "60",
+        "--speed-limit", "1024",
+        "-o", $OutFile,
+        $Url
+    )
+    $code = Run-LoggedWithProgress -Exe $curl.Source -ArgList $curlArgs -Activity $Activity
+    if (Test-Path $OutFile) {
+        $size = (Get-Item -LiteralPath $OutFile).Length
+        Write-Step "本地文件大小: $size bytes"
+        if ($size -ge $MinBytes) {
+            if ($code -ne 0) {
+                Write-Step "curl 返回非 0，但本地文件大小已达到预期；继续交给 pip 从本地 wheel 校验安装。"
+            }
+            return $true
+        }
+        Write-Step "[ERROR] 本地文件仍不完整: $size bytes，预期至少 $MinBytes bytes。"
+    }
+    return $false
+}
+
+function Install-CudaTorchFromWheelhouse {
+    $pyTag = Get-PythonWheelTag
+    if ($pyTag -notin @("cp310", "cp311", "cp312")) {
+        Write-Step "当前 Python wheel 标签为 $pyTag，启动器只为 Python 3.10-3.12 自动构造 CUDA wheel 下载链接。"
+        return $false
+    }
+
+    $torchWheelName = "torch-$TorchVersion-$pyTag-$pyTag-win_amd64.whl"
+    $torchVisionWheelName = "torchvision-$TorchVisionVersion-$pyTag-$pyTag-win_amd64.whl"
+    $torchWheel = Join-Path $WheelhouseDir $torchWheelName
+    $torchVisionWheel = Join-Path $WheelhouseDir $torchVisionWheelName
+    $torchUrl = "$TorchIndexUrl/$($torchWheelName.Replace('+', '%2B'))"
+    $torchVisionUrl = "$TorchIndexUrl/$($torchVisionWheelName.Replace('+', '%2B'))"
+
+    Write-Step "将使用可断点续传的本地 wheel 缓存目录: $WheelhouseDir"
+    if (-not (Download-FileWithResume -Url $torchUrl -OutFile $torchWheel -Activity "Downloading PyTorch CUDA wheel" -MinBytes 2700000000)) {
+        Write-Step "[ERROR] torch wheel 下载失败。重新运行 start.bat 会继续尝试断点续传。"
+        return $false
+    }
+    if (-not (Download-FileWithResume -Url $torchVisionUrl -OutFile $torchVisionWheel -Activity "Downloading torchvision CUDA wheel" -MinBytes 5000000)) {
+        Write-Step "[ERROR] torchvision wheel 下载失败。重新运行 start.bat 会继续尝试断点续传。"
+        return $false
+    }
+
+    Write-Step "CUDA PyTorch wheel 已下载完成，开始从本地缓存安装。"
+    $code = Run-LoggedWithProgress -Exe $Python -ArgList @("-m", "pip", "install", "--verbose", "--progress-bar", "on", "--no-warn-script-location", "--retries", "10", "--timeout", "120", $torchWheel, $torchVisionWheel, "numpy==$RequiredNumpy", "-i", "https://pypi.tuna.tsinghua.edu.cn/simple") -Activity "Installing local CUDA PyTorch wheels"
+    if ($code -ne 0) {
+        Write-Step "[ERROR] 本地 CUDA PyTorch wheel 安装失败。"
+        return $false
+    }
+    return (Test-TorchCuda)
+}
+
 function Test-Dependencies {
     & $Python -c "import importlib.util; import fastapi, uvicorn, PIL, numpy, cv2, torch, timm, diffusers, transformers, accelerate, safetensors, spandrel, spandrel_extra_arches, einops; missing=[m for m in ('onnxruntime','rembg','realesrgan','ben2') if importlib.util.find_spec(m) is None]; raise SystemExit(1 if missing else 0)" *> $null
     return ($LASTEXITCODE -eq 0)
@@ -324,21 +404,20 @@ function Test-TorchCuda {
 function Install-CudaTorch {
     Write-Step "当前环境没有可用的 CUDA 版 PyTorch，开始安装 CUDA 版 PyTorch。"
     Write-Step "如果安装失败，请换 Python 3.10-3.12 的 conda 环境，或手动安装匹配显卡驱动的 CUDA 版 PyTorch。"
-    Write-Step "为避免重复下载多个 2GB+ 的 torch wheel，本启动器只安装一个 CUDA 版本。"
+    Write-Step "为避免重复下载多个 2GB+ 的 torch wheel，本启动器只安装一个 CUDA 版本，并优先用断点续传下载。"
     Write-Step "默认选择 PyTorch CUDA 11.8 wheel: $TorchIndexUrl"
     Write-Step "CUDA 11.8 wheel 对 Python 3.10 更成熟，通常体积也比更新 CUDA wheel 更小。"
     Write-Step "固定版本: torch==$TorchVersion, torchvision==$TorchVisionVersion。"
-    $indexUrl = $TorchIndexUrl
     if (Test-TorchCuda) {
         Write-Step "CUDA PyTorch is already ready: $(Get-Torch-Cuda-Info)"
         return $true
     }
-    $code = Run-LoggedWithProgress -Exe $Python -ArgList @("-m", "pip", "install", "--verbose", "--progress-bar", "on", "--force-reinstall", "torch==$TorchVersion", "torchvision==$TorchVisionVersion", "numpy==$RequiredNumpy", "--index-url", $indexUrl, "--extra-index-url", "https://pypi.tuna.tsinghua.edu.cn/simple") -Activity "Installing CUDA PyTorch"
-    if (Test-TorchCuda) {
+    if (Install-CudaTorchFromWheelhouse) {
         Write-Step "CUDA PyTorch is ready: $(Get-Torch-Cuda-Info)"
         return $true
     }
     Write-Step "[ERROR] 没有安装成功 CUDA 版 PyTorch。为避免重复下载，本次不会自动继续下载 cu126/cu124。"
+    Write-Step "如果日志显示 curl 下载中断，直接重新运行 start.bat，会从 .cache\wheelhouse 中的未完成文件继续下载。"
     Write-Step "如确实需要其他 CUDA wheel，请手动安装后再启动，例如: python -m pip install torch --index-url https://download.pytorch.org/whl/cu126"
     return $false
 }
