@@ -4,32 +4,39 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>去水印工具</title>
+  <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="%23111827"/><path d="M18 38c8-15 20-18 28-7" fill="none" stroke="%232dd4bf" stroke-width="5" stroke-linecap="round"/><path d="M19 24h26M19 32h18M19 40h26" stroke="%23ffffff" stroke-width="4" stroke-linecap="round" opacity=".92"/></svg>'>
   <style>
     :root {
-      --bg: #eef2f7;
-      --panel: #ffffff;
-      --panel-2: #f8fafc;
-      --text: #111827;
-      --muted: #64748b;
-      --line: #dbe3ee;
-      --brand: #2563eb;
-      --brand-2: #0f766e;
-      --danger: #dc2626;
-      --ok: #16a34a;
-      --shadow: 0 16px 40px rgba(15, 23, 42, .12);
+      --bg: #f4f0f8;
+      --panel: rgba(255, 255, 255, .78);
+      --panel-2: rgba(250, 247, 255, .72);
+      --panel-3: rgba(235, 229, 246, .72);
+      --text: #17131f;
+      --muted: #6e657b;
+      --line: rgba(42, 32, 58, .13);
+      --brand: #17131f;
+      --brand-2: #2563eb;
+      --accent: #2563eb;
+      --accent-2: #0ea5e9;
+      --danger: #b42318;
+      --ok: #157f55;
+      --shadow: 0 24px 70px rgba(38, 24, 58, .16);
       --radius: 8px;
     }
 
     [data-theme="dark"] {
-      --bg: #10151f;
-      --panel: #171e2b;
-      --panel-2: #111827;
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --line: #2b3648;
-      --brand: #60a5fa;
-      --brand-2: #2dd4bf;
-      --shadow: 0 18px 50px rgba(0, 0, 0, .42);
+      --bg: #11101a;
+      --panel: rgba(25, 23, 36, .82);
+      --panel-2: rgba(32, 29, 47, .76);
+      --panel-3: rgba(52, 45, 70, .68);
+      --text: #fbf7ff;
+      --muted: #b8aec6;
+      --line: rgba(251, 247, 255, .13);
+      --brand: #fbf7ff;
+      --brand-2: #a78bfa;
+      --accent: #60a5fa;
+      --accent-2: #47d7f4;
+      --shadow: 0 24px 80px rgba(0, 0, 0, .48);
     }
 
     * { box-sizing: border-box; }
@@ -38,107 +45,354 @@
       min-height: 100vh;
       font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
       color: var(--text);
-      background: var(--bg);
+      background:
+        linear-gradient(90deg, rgba(42, 32, 58, .055) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(42, 32, 58, .045) 1px, transparent 1px),
+        radial-gradient(circle at 12% 0%, rgba(255, 255, 255, .68), transparent 24%),
+        radial-gradient(circle at 78% 10%, rgba(37, 99, 235, .16), transparent 28%),
+        radial-gradient(circle at 92% 72%, rgba(25, 167, 206, .13), transparent 30%),
+        linear-gradient(135deg, #fbf8ff 0%, #eee7f6 50%, #f8fbff 100%),
+        var(--bg);
+      background-size: 42px 42px, 42px 42px, auto, auto, auto, auto;
+    }
+    [data-theme="dark"] body {
+      background:
+        linear-gradient(90deg, rgba(255, 255, 255, .035) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(255, 255, 255, .03) 1px, transparent 1px),
+        radial-gradient(circle at 14% 0%, rgba(255, 111, 163, .12), transparent 24%),
+        radial-gradient(circle at 88% 8%, rgba(71, 215, 244, .12), transparent 26%),
+        linear-gradient(135deg, #100f18 0%, #1d1830 52%, #11101a 100%);
+      background-size: 42px 42px, 42px 42px, auto, auto, auto;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -18%;
+      pointer-events: none;
+      z-index: -1;
+      background:
+        radial-gradient(circle at 20% 25%, rgba(255,255,255,.34), transparent 18%),
+        radial-gradient(circle at 72% 18%, rgba(37,99,235,.20), transparent 20%),
+        radial-gradient(circle at 62% 82%, rgba(25,167,206,.13), transparent 24%);
+      filter: blur(18px);
+      animation: ambientDrift 18s ease-in-out infinite alternate;
+    }
+    @keyframes ambientDrift {
+      from { transform: translate3d(-1.5%, -1%, 0) scale(1); }
+      to { transform: translate3d(1.5%, 1%, 0) scale(1.03); }
     }
 
     .app {
       min-height: 100vh;
       display: grid;
-      grid-template-rows: 58px 1fr;
+      grid-template-rows: 68px 1fr;
     }
 
     header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 20px;
-      background: rgba(255, 255, 255, .82);
-      border-bottom: 1px solid var(--line);
-      backdrop-filter: blur(14px);
+      padding: 0 28px;
+      background: rgba(250, 248, 244, .48);
+      border-bottom: 1px solid rgba(29, 29, 31, .1);
+      backdrop-filter: blur(34px) saturate(155%);
       position: sticky;
       top: 0;
       z-index: 20;
     }
 
-    [data-theme="dark"] header { background: rgba(23, 30, 43, .84); }
-    .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; }
+    [data-theme="dark"] header { background: rgba(17, 17, 16, .72); border-bottom-color: rgba(245, 245, 240, .1); }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 760; letter-spacing: .01em; }
     .brand-mark {
-      width: 34px; height: 34px; border-radius: 8px;
+      width: 36px; height: 36px; border-radius: 11px;
       display: grid; place-items: center; color: white;
-      background: linear-gradient(135deg, var(--brand), var(--brand-2));
-      box-shadow: 0 8px 18px rgba(37, 99, 235, .25);
+      background: linear-gradient(145deg, #17131f, #1e3a8a 52%, #0ea5e9);
+      box-shadow: 0 12px 24px rgba(76, 29, 149, .22);
     }
-    .status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      min-width: 0;
+      flex: 1;
+    }
+    #gpuStatus {
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 12px;
+      min-width: 220px;
+      max-width: min(520px, 46vw);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .46);
+      backdrop-filter: blur(18px);
+    }
+    .theme-toggle {
+      min-width: 92px;
+      border-radius: 999px;
+      font-weight: 760;
+      background: rgba(255, 255, 255, .58);
+    }
+    header .theme-toggle {
+      width: 92px;
+      flex: 0 0 92px;
+    }
+    .shutdown-btn {
+      min-width: 92px;
+      border-radius: 999px;
+      font-weight: 760;
+      border-color: rgba(185, 28, 28, .34);
+      color: #b91c1c;
+      background: rgba(255, 255, 255, .58);
+    }
+    header .shutdown-btn {
+      width: 92px;
+      flex: 0 0 92px;
+    }
+    .shutdown-btn.armed {
+      color: #fff;
+      background: linear-gradient(135deg, #991b1b, #dc2626);
+      box-shadow: 0 12px 24px rgba(185, 28, 28, .22);
+    }
 
     .layout {
       display: grid;
-      grid-template-columns: 300px minmax(0, 1fr) 380px;
-      min-height: calc(100vh - 58px);
+      grid-template-columns: 380px minmax(0, 1fr) 420px;
+      gap: 18px;
+      min-height: calc(100vh - 68px);
+      padding: 18px;
     }
 
     aside {
-      background: var(--panel);
-      border-right: 1px solid var(--line);
-      padding: 18px;
+      background: rgba(255, 255, 255, .58);
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      padding: 12px;
       overflow: auto;
+      backdrop-filter: blur(28px) saturate(145%);
+      box-shadow: 0 22px 70px rgba(38, 24, 58, .12);
     }
-    .result-panel { border-right: 0; border-left: 1px solid var(--line); display: none; }
+    [data-theme="dark"] aside { background: rgba(20, 18, 31, .72); }
+    .control-panel { max-height: calc(100vh - 104px); scrollbar-width: thin; }
+    .result-panel { display: none; max-height: calc(100vh - 104px); }
     .result-panel.open { display: block; }
 
-    .section { padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .section { padding: 0; border-bottom: 0; }
     .section:first-child { padding-top: 0; }
     .section:last-child { border-bottom: 0; }
-    .label { display: block; margin-bottom: 10px; font-size: 12px; font-weight: 700; color: var(--muted); }
+    .label { display: block; margin-bottom: 8px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 850; color: var(--muted); }
+
+    .operator-card {
+      position: relative;
+      min-height: 150px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 16px 132px 16px 16px;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.78), rgba(255,255,255,.28)),
+        radial-gradient(circle at 88% 18%, rgba(37,99,235,.18), transparent 34%);
+      box-shadow: 0 18px 55px rgba(38, 24, 58, .12);
+    }
+    [data-theme="dark"] .operator-card {
+      background:
+        linear-gradient(135deg, rgba(38,34,54,.86), rgba(27,24,41,.62)),
+        radial-gradient(circle at 88% 18%, rgba(96,165,250,.18), transparent 34%);
+    }
+    .operator-card strong { display: block; font-size: 16px; margin-bottom: 6px; }
+    .operator-card span { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .anime-agent {
+      position: absolute;
+      right: 18px;
+      bottom: 0;
+      width: 96px;
+      height: 134px;
+      filter: drop-shadow(0 18px 26px rgba(76, 29, 149, .24));
+    }
+    .anime-agent::before {
+      content: "";
+      position: absolute;
+      left: 16px;
+      top: 8px;
+      width: 64px;
+      height: 64px;
+      border-radius: 46% 54% 48% 52%;
+      background:
+        radial-gradient(circle at 36% 42%, #17131f 0 3px, transparent 4px),
+        radial-gradient(circle at 62% 42%, #17131f 0 3px, transparent 4px),
+        linear-gradient(#ffd7c7, #f3b89f);
+      border: 2px solid rgba(23,19,31,.12);
+    }
+    .anime-agent::after {
+      content: "";
+      position: absolute;
+      left: 8px;
+      bottom: -12px;
+      width: 80px;
+      height: 82px;
+      border-radius: 24px 24px 14px 14px;
+      background:
+        linear-gradient(120deg, transparent 0 36%, rgba(255,255,255,.34) 37% 42%, transparent 43%),
+        linear-gradient(145deg, #17131f, #1e3a8a 60%, #0ea5e9);
+      clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%);
+    }
+    .anime-hair {
+      position: absolute;
+      right: 26px;
+      top: 0;
+      width: 78px;
+      height: 54px;
+      border-radius: 50% 50% 35% 35%;
+      background: linear-gradient(135deg, #1e293b, #2563eb);
+      z-index: 2;
+      transform: rotate(-6deg);
+    }
+    .anime-hair::after {
+      content: "";
+      position: absolute;
+      left: 10px;
+      bottom: -20px;
+      width: 18px;
+      height: 38px;
+      border-radius: 0 0 12px 12px;
+      background: #2b2141;
+      transform: rotate(18deg);
+    }
 
     .upload {
       border: 1.5px dashed var(--line);
       background: var(--panel-2);
-      border-radius: var(--radius);
-      padding: 22px 14px;
+      border-radius: 18px;
+      padding: 16px;
       display: grid;
-      gap: 7px;
+      gap: 5px;
       text-align: center;
       cursor: pointer;
       transition: .18s ease;
     }
-    .upload:hover, .upload.drag { border-color: var(--brand); background: rgba(37, 99, 235, .08); }
-    .upload strong { font-size: 15px; }
+    .upload:hover, .upload.drag { border-color: rgba(37, 99, 235, .55); background: rgba(255, 255, 255, .58); }
+    .upload strong { font-size: 14px; letter-spacing: .01em; }
     .upload span { color: var(--muted); font-size: 12px; }
 
     .btn, .icon-btn, .seg button {
       border: 1px solid var(--line);
       background: var(--panel);
       color: var(--text);
-      border-radius: var(--radius);
+      border-radius: 13px;
       min-height: 38px;
-      padding: 0 13px;
+      padding: 0 12px;
       font: inherit;
       cursor: pointer;
       transition: .16s ease;
     }
-    .btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 650; }
-    .btn:hover, .icon-btn:hover, .seg button:hover { border-color: var(--brand); }
-    .btn.primary { border-color: transparent; color: white; background: linear-gradient(135deg, var(--brand), var(--brand-2)); }
+    .btn { width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 680; letter-spacing: .005em; }
+    .btn:hover, .icon-btn:hover, .seg button:hover { border-color: rgba(37, 99, 235, .46); transform: translateY(-1px); }
+    .btn.primary { border-color: transparent; color: white; background: linear-gradient(145deg, #17131f, #1e3a8a 58%, #0ea5e9); box-shadow: 0 14px 30px rgba(37, 99, 235, .20); }
     .btn.danger { color: var(--danger); }
     .btn:disabled { opacity: .48; cursor: not-allowed; }
-    .icon-btn { min-width: 38px; padding: 0; }
+    .icon-btn { min-width: 38px; padding: 0; border-radius: 50%; }
 
     .row { display: flex; gap: 8px; align-items: center; }
-    .stack { display: grid; gap: 10px; }
+    .stack { display: grid; gap: 8px; }
+    .control-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+      box-shadow: 0 16px 45px rgba(29, 29, 31, .1);
+      backdrop-filter: blur(20px) saturate(135%);
+    }
+    .control-card.section { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+    .tool-board { display: grid; gap: 10px; }
+    .tool-card {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 14px;
+      background: var(--panel);
+      box-shadow: 0 16px 45px rgba(38, 24, 58, .10);
+      backdrop-filter: blur(20px) saturate(135%);
+    }
+    .tool-card > * + * { margin-top: 10px; }
+    .operator-card + .control-card,
+    .control-card + .control-card,
+    .control-card + .tool-board { margin-top: 10px; }
+    .tool-card.accent {
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.84), rgba(255,255,255,.5)),
+        radial-gradient(circle at 95% 5%, rgba(37,99,235,.15), transparent 36%);
+    }
+    [data-theme="dark"] .tool-card.accent {
+      background:
+        linear-gradient(135deg, rgba(32,29,47,.88), rgba(25,23,36,.70)),
+        radial-gradient(circle at 95% 5%, rgba(96,165,250,.16), transparent 36%);
+    }
+    .tool-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .tool-title strong { font-size: 14px; }
+    .tool-title small { color: var(--muted); font-size: 11px; }
+    .tool-chip {
+      color: var(--accent);
+      border: 1px solid rgba(37, 99, 235, .24);
+      background: rgba(37, 99, 235, .08);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 10px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .action-row .primary, .action-row .wide { grid-column: 1 / -1; }
     .seg { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-    .seg button.active { color: white; border-color: transparent; background: var(--brand); }
+    .seg button.active { color: white; border-color: transparent; background: linear-gradient(145deg, #1d1d1f, #8a662f); }
     .model-list { display: grid; gap: 8px; }
+    .model-list.dense { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .model-option {
       width: 100%;
       display: grid;
-      gap: 4px;
+      gap: 3px;
       text-align: left;
       min-height: auto;
-      padding: 10px 12px;
+      padding: 10px 11px;
+      border-radius: 14px;
+      align-content: start;
     }
-    .model-option.active { border-color: var(--brand); background: rgba(37, 99, 235, .08); }
-    .model-option strong { font-size: 13px; }
-    .model-option span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .model-option.active {
+      border-color: rgba(37, 99, 235, .50);
+      background: linear-gradient(180deg, rgba(255, 255, 255, .76), rgba(37, 99, 235, .12));
+      box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .10);
+    }
+    .model-option strong { font-size: 12px; line-height: 1.25; }
+    .model-option span { color: var(--muted); font-size: 11px; line-height: 1.3; }
+    .model-option small { color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .model-list.enhancers { grid-template-columns: 1fr; }
+    .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .action-grid .primary, .action-grid .wide { grid-column: 1 / -1; }
+    details.compact {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-2);
+      overflow: hidden;
+    }
+    details.compact summary {
+      cursor: pointer;
+      padding: 9px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    details.compact textarea { border: 0; border-top: 1px solid var(--line); border-radius: 0; min-height: 58px; }
     textarea {
       width: 100%;
       min-height: 68px;
@@ -152,9 +406,18 @@
       font-size: 13px;
     }
 
-    input[type="range"] { width: 100%; accent-color: var(--brand); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
     .range-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
-    .hint { color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .scale-readout { color: var(--text); font-weight: 760; }
+    .preset-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .hint { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .shortcut-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
     kbd { border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; background: var(--panel-2); }
 
     main {
@@ -162,30 +425,68 @@
       position: relative;
       display: grid;
       place-items: center;
-      padding: 22px;
+      padding: 76px 24px 24px;
       overflow: hidden;
+      border: 1px solid rgba(29, 29, 31, .08);
+      border-radius: 28px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.45), 0 28px 90px rgba(29, 29, 31, .10);
       background:
-        linear-gradient(45deg, rgba(148, 163, 184, .14) 25%, transparent 25%),
-        linear-gradient(-45deg, rgba(148, 163, 184, .14) 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, .14) 75%),
-        linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, .14) 75%);
+        linear-gradient(45deg, rgba(29, 29, 31, .055) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(29, 29, 31, .055) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(29, 29, 31, .055) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(29, 29, 31, .055) 75%),
+        linear-gradient(135deg, rgba(255,255,255,.42), rgba(255,255,255,.08));
       background-size: 22px 22px;
       background-position: 0 0, 0 11px, 11px -11px, -11px 0;
     }
     main.drag { outline: 3px dashed var(--brand); outline-offset: -12px; }
+    .stage-bar {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 12px 0 14px;
+      border: 1px solid rgba(29, 29, 31, .1);
+      border-radius: 16px;
+      background: rgba(255,255,255,.48);
+      backdrop-filter: blur(24px) saturate(150%);
+      box-shadow: 0 12px 38px rgba(29,29,31,.1);
+      z-index: 6;
+    }
+    [data-theme="dark"] .stage-bar { background: rgba(29,29,27,.54); border-color: rgba(245,245,240,.12); }
+    .stage-title { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 760; }
+    .stage-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px rgba(200,155,60,.14); }
+    .stage-meta { color: var(--muted); font-size: 12px; }
 
-    .empty { text-align: center; color: var(--muted); display: grid; gap: 10px; }
-    .empty .big { font-size: 54px; opacity: .45; }
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      display: grid;
+      gap: 12px;
+      padding: 38px 42px;
+      border: 1px solid rgba(29,29,31,.1);
+      border-radius: 28px;
+      background: rgba(255,255,255,.34);
+      backdrop-filter: blur(20px);
+      box-shadow: 0 24px 80px rgba(29,29,31,.12);
+    }
+    .empty .big { font-size: 52px; opacity: .55; color: var(--text); }
 
     .canvas-shell {
       position: relative;
       max-width: 100%;
       max-height: 100%;
-      border-radius: 6px;
+      border-radius: 22px;
       overflow: hidden;
       box-shadow: var(--shadow);
       background: #fff;
       display: none;
+      border: 1px solid rgba(255,255,255,.6);
     }
     canvas { display: block; }
     #maskCanvas { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
@@ -194,14 +495,14 @@
     .canvas-tools {
       position: absolute;
       left: 50%;
-      bottom: 18px;
+      bottom: 24px;
       transform: translateX(-50%);
       display: none;
       gap: 8px;
       padding: 8px;
       background: rgba(17, 24, 39, .82);
       border: 1px solid rgba(255, 255, 255, .12);
-      border-radius: 8px;
+      border-radius: 999px;
       backdrop-filter: blur(12px);
       z-index: 5;
     }
@@ -210,7 +511,7 @@
     .compare {
       position: relative;
       overflow: hidden;
-      border-radius: var(--radius);
+      border-radius: 18px;
       background: var(--panel-2);
       box-shadow: inset 0 0 0 1px var(--line);
       user-select: none;
@@ -227,7 +528,7 @@
       content: "↔"; position: absolute; top: 50%; left: 50%;
       transform: translate(-50%, -50%);
       width: 34px; height: 34px; border-radius: 50%;
-      display: grid; place-items: center; color: white; background: var(--brand);
+      display: grid; place-items: center; color: white; background: linear-gradient(145deg, #17131f, #0ea5e9);
       box-shadow: 0 8px 18px rgba(0,0,0,.28);
     }
     .badge { position: absolute; top: 10px; padding: 4px 8px; border-radius: 6px; font-size: 12px; color: white; background: rgba(15,23,42,.72); }
@@ -237,10 +538,13 @@
     .meta { display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
     .meta div { display: flex; justify-content: space-between; gap: 12px; }
     .meta strong { color: var(--text); font-weight: 650; }
+    .result-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .result-actions .primary { grid-column: 1 / -1; }
+    .result-actions .continue { grid-column: 1 / -1; }
 
     .overlay, .download-modal {
       position: fixed; inset: 0; display: none; place-items: center;
-      background: rgba(15, 23, 42, .54); backdrop-filter: blur(8px); z-index: 100;
+      background: rgba(29, 29, 31, .54); backdrop-filter: blur(14px); z-index: 100;
     }
     .overlay.open, .download-modal.open { display: grid; }
     .dialog {
@@ -255,7 +559,7 @@
     }
     .spinner {
       width: 42px; height: 42px; border-radius: 50%;
-      border: 4px solid var(--line); border-top-color: var(--brand);
+      border: 4px solid var(--line); border-top-color: var(--accent);
       animation: spin .8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -270,18 +574,38 @@
     .progress-line { display: grid; gap: 6px; }
     .progress-top { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
     .bar { height: 8px; border-radius: 99px; overflow: hidden; background: var(--line); }
-    .bar span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .25s ease; }
+    .bar span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #1e3a8a, #0ea5e9); transition: width .25s ease; }
+    .modal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 2px; }
+
+    [data-theme="dark"] .btn,
+    [data-theme="dark"] .icon-btn,
+    [data-theme="dark"] .seg button {
+      background: rgba(25, 31, 40, .7);
+    }
+    [data-theme="dark"] .model-option.active {
+      background: linear-gradient(180deg, rgba(96, 165, 250, .18), rgba(255, 255, 255, .04));
+    }
+    [data-theme="dark"] .bar span {
+      background: linear-gradient(90deg, #fbf7ff, #60a5fa);
+    }
 
     @media (max-width: 1100px) {
-      .layout { grid-template-columns: 280px minmax(0, 1fr); }
-      .result-panel.open { position: fixed; right: 0; top: 58px; bottom: 0; width: min(380px, 96vw); z-index: 30; box-shadow: var(--shadow); }
+      .layout { grid-template-columns: 320px minmax(0, 1fr); }
+      .result-panel.open { position: fixed; right: 0; top: 64px; bottom: 0; width: min(400px, 96vw); z-index: 30; box-shadow: var(--shadow); }
+      .model-list.dense { grid-template-columns: 1fr; }
+      .operator-card { padding-right: 112px; }
     }
     @media (max-width: 760px) {
       .layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-      aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 42vh; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); max-height: 46vh; }
       main { min-height: 58vh; padding: 12px; }
       header { padding: 0 12px; }
-      .status span:first-child { display: none; }
+      .status { gap: 6px; font-size: 12px; }
+      #gpuStatus { min-width: 0; max-width: 42vw; padding: 0 9px; }
+      header .theme-toggle, header .shutdown-btn { width: 92px; flex-basis: 92px; }
+      .action-grid, .action-row, .model-list.dense { grid-template-columns: 1fr; }
+      .operator-card { min-height: 128px; padding-right: 96px; }
+      .anime-agent { right: 8px; transform: scale(.82); transform-origin: right bottom; }
     }
   </style>
 </head>
@@ -291,21 +615,29 @@
     <div class="brand"><span class="brand-mark">AI</span><span>去水印工具</span></div>
     <div class="status">
       <span id="gpuStatus">正在检查环境...</span>
-      <button class="icon-btn" id="themeBtn" title="切换主题">◐</button>
+      <button class="btn theme-toggle" id="themeBtn" title="切换主题">深色模式</button>
+      <button class="btn shutdown-btn" id="shutdownBtn" title="需要二次确认">停止服务</button>
     </div>
   </header>
 
   <div class="layout">
-    <aside>
-      <section class="section">
+    <aside class="control-panel">
+      <section class="section operator-card">
+        <strong>Pixel Atelier</strong>
+        <span>Image Repair Console</span>
+        <div class="anime-hair"></div>
+        <div class="anime-agent"></div>
+      </section>
+
+      <section class="section control-card">
         <div class="upload" id="uploadBox">
           <strong>上传或拖入图片</strong>
-          <span>支持 JPG、PNG、WebP。水印位置用画笔涂出来。</span>
+          <span>JPG / PNG / WebP</span>
         </div>
         <input id="fileInput" type="file" accept="image/*" hidden>
       </section>
 
-      <section class="section stack" id="editControls" hidden>
+      <section class="section stack control-card" id="editControls" hidden>
         <span class="label">遮罩工具</span>
         <div class="range-head"><span>画笔大小</span><strong id="brushValue">34</strong></div>
         <input id="brushSize" type="range" min="4" max="150" value="34">
@@ -319,54 +651,96 @@
         </div>
       </section>
 
-      <section class="section stack" id="actionControls" hidden>
-        <span class="label">处理</span>
-        <div class="model-list" id="modelList">
-          <button class="btn model-option active" data-model="opencv">
-            <strong>快速修复 - OpenCV</strong>
-            <span>无需下载，适合小水印和简单背景。</span>
-          </button>
-          <button class="btn model-option" data-model="lama">
-            <strong>LaMa - 本地模型</strong>
-            <span>速度较快；当前权重不兼容时会自动兜底。</span>
-          </button>
-          <button class="btn model-option" data-model="sd15">
-            <strong>生成式修复 - SD 1.5</strong>
-            <span>适合大块重绘；小水印通常优先用 LaMa。</span>
-          </button>
+      <section class="section tool-board" id="actionControls" hidden>
+        <div class="tool-card accent">
+          <div class="tool-title">
+            <div><strong>水印修复</strong><small>涂抹遮罩后执行</small></div>
+            <span class="tool-chip">Repair</span>
+          </div>
+          <div class="model-list dense" id="modelList">
+            <button class="btn model-option active" data-model="opencv">
+              <strong>OpenCV 快速</strong>
+              <span>无需下载</span>
+            </button>
+            <button class="btn model-option" data-model="lama">
+              <strong>LaMa 本地</strong>
+              <span>自然修复</span>
+            </button>
+            <button class="btn model-option" data-model="sd15">
+              <strong>SD 生成式</strong>
+              <span>大块重绘</span>
+            </button>
+          </div>
+          <details class="compact" id="promptDetails" hidden>
+            <summary>生成式提示词</summary>
+            <div class="preset-row">
+              <button class="btn prompt-preset" data-prompt="">无提示词</button>
+              <button class="btn prompt-preset" data-prompt="clean original image, natural background, realistic texture, remove watermark, no text, no logo, high quality">自然去水印</button>
+              <button class="btn prompt-preset" data-prompt="restore the original photo, clean background, seamless texture, no watermark, no letters, no signature, photorealistic">照片修复</button>
+              <button class="btn prompt-preset" data-prompt="clean artwork, consistent colors, smooth details, no watermark, no text, no logo, high quality illustration">插画修复</button>
+            </div>
+            <textarea id="promptInput" placeholder="可留空。例：clean original image, natural background, no watermark"></textarea>
+          </details>
+          <div class="action-row">
+            <button class="btn primary" id="removeBtn">去除水印</button>
+            <button class="btn" id="resetBtn">重新选择</button>
+          </div>
         </div>
-        <textarea id="promptInput" placeholder="生成式修复提示词，可留空。例：clean original image, natural background, no watermark"></textarea>
-        <button class="btn primary" id="removeBtn">去除水印</button>
-        <button class="btn" id="cutoutBtn" disabled>抠出主体透明背景</button>
-        <p class="hint">抠图优先使用 rembg/U2-Net，本地没有模型会自动下载到 models/rembg；只有模型或依赖加载失败时才使用 OpenCV GrabCut 兜底。适合主体清晰的人像、商品和普通物体。</p>
-        <span class="label">增强倍数</span>
-        <div class="seg">
-          <button class="scale active" data-scale="2">通用 2x</button>
-          <button class="scale" data-scale="4">通用/动漫 4x</button>
-        </div>
-        <p class="hint">2x 使用通用照片模型；4x 可选择通用照片模型或动漫插画模型。</p>
-        <span class="label">增强模型</span>
-        <div class="model-list">
-          <button class="btn model-option enhance-option active" data-enhancer="general">
-            <strong>通用照片增强 - Real-ESRGAN</strong>
-            <span>适合照片、真实图片和普通截图；支持 2x / 4x。</span>
-          </button>
-          <button class="btn model-option enhance-option" data-enhancer="anime">
-            <strong>动漫插画增强 - Anime 6B</strong>
-            <span>适合插画、线条图、二次元图片；固定 4x。</span>
-          </button>
-        </div>
-        <button class="btn" id="enhanceBtn" disabled>增强结果分辨率</button>
-        <button class="btn" id="resetBtn">重新选择图片</button>
-      </section>
 
-      <section class="section">
-        <span class="label">快捷键</span>
-        <p class="hint"><kbd>Ctrl</kbd> + <kbd>Z</kbd> 撤销，<kbd>[</kbd>/<kbd>]</kbd> 调整画笔，<kbd>D</kbd> 涂抹，<kbd>E</kbd> 擦除。</p>
+        <div class="tool-card">
+          <div class="tool-title">
+            <div><strong>主体抠图</strong><small>输出透明背景 PNG</small></div>
+            <span class="tool-chip">Cutout</span>
+          </div>
+          <div class="model-list dense">
+            <button class="btn model-option cutout-option active" data-cutout="u2net">
+              <strong>快速 u2net</strong>
+              <span>速度快，兼容性好。</span>
+            </button>
+            <button class="btn model-option cutout-option" data-cutout="ben2">
+              <strong>高质量 BEN2</strong>
+              <span>适合头发、复杂边缘、商品图、4K 图。</span>
+            </button>
+          </div>
+          <button class="btn" id="cutoutBtn" disabled>主体抠图</button>
+        </div>
+
+        <div class="tool-card">
+          <div class="tool-title">
+            <div><strong>分辨率增强</strong><small>模型真实推理</small></div>
+            <span class="tool-chip">Upscale</span>
+          </div>
+          <div class="range-head"><span>目标倍率 0-8x</span><strong class="scale-readout" id="enhanceScaleValue">4.0x</strong></div>
+          <input id="enhanceScale" type="range" min="0" max="8" step="0.1" value="4">
+          <div class="model-list enhancers">
+            <button class="btn model-option enhance-option" data-enhancer="realesrgan4">
+              <strong>R-ESRGAN 4x+</strong>
+              <span>通用照片、自然图像、老图修复。</span>
+            </button>
+            <button class="btn model-option enhance-option" data-enhancer="anime">
+              <strong>R-ESRGAN Anime6B</strong>
+              <span>动漫、插画、线稿、二次元图。</span>
+            </button>
+            <button class="btn model-option enhance-option" data-enhancer="ultrasharp">
+              <strong>4x-UltraSharp</strong>
+              <span>JPEG 压缩图、AI 图、需要锐化的图。</span>
+            </button>
+            <button class="btn model-option enhance-option active" data-enhancer="swinir_large">
+              <strong>SwinIR-L 4x</strong>
+              <span>真实退化、复杂纹理、结构一致性。</span>
+            </button>
+          </div>
+          <button class="btn wide" id="enhanceBtn" disabled>增强分辨率</button>
+        </div>
+
       </section>
     </aside>
 
     <main id="workspace">
+      <div class="stage-bar">
+        <div class="stage-title"><span class="stage-dot"></span><span>Pro Canvas</span></div>
+        <div class="stage-meta">Mask <span id="stageBrush">34</span>px</div>
+      </div>
       <div class="empty" id="emptyState">
         <div class="big">□</div>
         <strong>把图片拖到这里开始</strong>
@@ -399,7 +773,12 @@
           <span class="badge after">结果</span>
         </div>
         <div class="meta" id="resultMeta"></div>
-        <button class="btn primary" id="downloadBtn">下载结果图片</button>
+        <div class="result-actions">
+          <button class="btn" id="copyOriginalBtn">复制原图</button>
+          <button class="btn" id="copyResultBtn">复制结果</button>
+          <button class="btn continue" id="reuseResultBtn">把结果放回上传区继续处理</button>
+          <button class="btn primary" id="downloadBtn">下载结果图片</button>
+        </div>
       </section>
     </aside>
   </div>
@@ -410,6 +789,7 @@
     <div class="spinner"></div>
     <strong id="loadingTitle">正在处理...</strong>
     <span class="hint">大图或 CPU 推理会更慢，请保持窗口打开。</span>
+    <button class="btn shutdown-btn" id="stopFromLoadingBtn">停止服务并结束当前处理</button>
   </div>
 </div>
 
@@ -424,6 +804,18 @@
     <div class="progress-line">
       <div class="progress-top"><span id="esrName">Real-ESRGAN 超分模型</span><span id="esrText">等待中</span></div>
       <div class="bar"><span id="esrBar"></span></div>
+    </div>
+    <div class="progress-line">
+      <div class="progress-top"><span id="sdName">SD 1.5 Inpaint 生成式修复模型</span><span id="sdText">等待中</span></div>
+      <div class="bar"><span id="sdBar"></span></div>
+    </div>
+    <div class="progress-line">
+      <div class="progress-top"><span id="bgName">rembg/u2net 抠图模型</span><span id="bgText">等待中</span></div>
+      <div class="bar"><span id="bgBar"></span></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" id="hideProgressBtn">后台等待</button>
+      <button class="btn shutdown-btn" id="stopFromProgressBtn">停止服务</button>
     </div>
   </div>
 </div>
@@ -442,9 +834,14 @@ const state = {
   drawing: false,
   last: null,
   undo: [],
-  selectedScale: 2,
+  selectedScale: 4,
   selectedModel: "opencv",
-  selectedEnhancer: "general",
+  selectedEnhancer: "swinir_large",
+  selectedCutout: "u2net",
+  shutdownArmed: false,
+  shutdownTimer: null,
+  progressMinimized: false,
+  backgroundProgressIgnoreUntil: 0,
 };
 
 const imageCanvas = $("imageCanvas");
@@ -465,23 +862,57 @@ function setBusy(on, text = "正在处理...") {
   $("loading").classList.toggle("open", on);
 }
 
+function resetImageState(dataUrl, img) {
+  state.image = img;
+  state.imageDataUrl = dataUrl;
+  state.resultDataUrl = "";
+  state.enhancedDataUrl = "";
+  state.cutoutDataUrl = "";
+  state.maskUrl = "";
+  state.undo = [];
+  showEditor(true);
+  closeResult(false);
+  $("cutoutBtn").disabled = false;
+  $("enhanceBtn").disabled = false;
+  fitCanvas();
+}
+
 function setTheme(theme) {
   document.body.dataset.theme = theme;
   localStorage.setItem("theme", theme);
+  $("themeBtn").textContent = theme === "dark" ? "浅色模式" : "深色模式";
 }
 setTheme(localStorage.getItem("theme") || "light");
 $("themeBtn").onclick = () => setTheme(document.body.dataset.theme === "dark" ? "light" : "dark");
+$("shutdownBtn").onclick = () => requestShutdown($("shutdownBtn"));
+$("stopFromLoadingBtn").onclick = () => requestShutdown($("stopFromLoadingBtn"));
+$("stopFromProgressBtn").onclick = () => requestShutdown($("stopFromProgressBtn"));
+$("hideProgressBtn").onclick = () => {
+  state.progressMinimized = true;
+  $("downloadModal").classList.remove("open");
+};
 
 async function checkHealth() {
   try {
     const r = await fetch("/api/health");
     const data = await r.json();
     $("gpuStatus").textContent = data.cuda_available ? `GPU: ${data.gpu_name}` : "CPU 模式";
+    if (data.cuda_available) {
+      setTimeout(triggerCudaWarmup, 350);
+    }
   } catch {
     $("gpuStatus").textContent = "后端未连接";
   }
 }
 checkHealth();
+
+async function triggerCudaWarmup() {
+  try {
+    await fetch("/api/warmup", { method: "POST", keepalive: true });
+  } catch {
+    // Warmup is only an optimization; normal processing still works.
+  }
+}
 
 async function loadModels() {
   try {
@@ -548,22 +979,76 @@ function loadFile(file) {
   reader.onload = e => {
     const img = new Image();
     img.onload = () => {
-      state.image = img;
-      state.imageDataUrl = e.target.result;
-      state.resultDataUrl = "";
-      state.enhancedDataUrl = "";
-      state.cutoutDataUrl = "";
-      state.maskUrl = "";
-      state.undo = [];
-      showEditor(true);
-      closeResult(false);
-      $("cutoutBtn").disabled = false;
-      $("enhanceBtn").disabled = false;
-      fitCanvas();
+      resetImageState(e.target.result, img);
     };
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+function loadDataUrlToEditor(dataUrl, message = "结果已放回上传区，可以继续处理") {
+  if (!dataUrl) return toast("没有可继续处理的结果", "error");
+  const img = new Image();
+  img.onload = () => {
+    $("fileInput").value = "";
+    resetImageState(dataUrl, img);
+    toast(message);
+  };
+  img.onerror = () => toast("结果图读取失败，无法继续处理", "error");
+  img.src = dataUrl;
+}
+
+async function requestShutdown(sourceBtn = null) {
+  if (!state.shutdownArmed) {
+    state.shutdownArmed = true;
+    document.querySelectorAll(".shutdown-btn").forEach(btn => {
+      btn.classList.add("armed");
+      btn.textContent = "再次点击确认停止";
+    });
+    toast("再次点击红色按钮将停止后端服务");
+    clearTimeout(state.shutdownTimer);
+    state.shutdownTimer = setTimeout(() => {
+      state.shutdownArmed = false;
+      document.querySelectorAll(".shutdown-btn").forEach(btn => {
+        btn.classList.remove("armed");
+        btn.textContent = btn === $("stopFromLoadingBtn") ? "停止服务并结束当前处理" : "停止服务";
+      });
+    }, 5000);
+    return;
+  }
+
+  if (sourceBtn) sourceBtn.disabled = true;
+  clearTimeout(state.shutdownTimer);
+  state.shutdownArmed = false;
+  $("loading").classList.remove("open");
+  $("downloadModal").classList.remove("open");
+  $("gpuStatus").textContent = "正在停止服务";
+  document.querySelectorAll(".shutdown-btn").forEach(btn => {
+    btn.disabled = true;
+    btn.classList.add("armed");
+    btn.textContent = "正在停止";
+  });
+  toast("已发送停止指令，后端正在关闭");
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 650);
+  try {
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon("/api/shutdown", new Blob([], { type: "application/json" }));
+    } else {
+      fetch("/api/shutdown", {
+        method: "POST",
+        keepalive: true,
+        signal: controller.signal,
+      }).catch(() => {});
+    }
+    $("gpuStatus").textContent = "服务已停止";
+    $("loadingTitle").textContent = "服务已停止";
+  } catch {
+    $("gpuStatus").textContent = "服务已停止";
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 $("uploadBox").onclick = () => $("fileInput").click();
@@ -661,28 +1146,35 @@ function undo() {
 $("brushSize").oninput = e => {
   state.brush = Number(e.target.value);
   $("brushValue").textContent = state.brush;
+  $("stageBrush").textContent = state.brush;
 };
 document.querySelectorAll(".mode").forEach(b => b.onclick = () => setMode(b.dataset.mode));
-document.querySelectorAll(".scale").forEach(b => b.onclick = () => {
-  state.selectedScale = Number(b.dataset.scale);
-  document.querySelectorAll(".scale").forEach(x => x.classList.toggle("active", x === b));
-  if (state.selectedScale === 2 && state.selectedEnhancer === "anime") {
-    state.selectedEnhancer = "general";
-    document.querySelectorAll(".enhance-option").forEach(x => x.classList.toggle("active", x.dataset.enhancer === "general"));
-  }
-});
+$("enhanceScale").oninput = e => {
+  state.selectedScale = Number(e.target.value);
+  $("enhanceScaleValue").textContent = `${state.selectedScale.toFixed(1)}x`;
+};
 document.querySelectorAll(".enhance-option").forEach(b => b.onclick = () => {
   state.selectedEnhancer = b.dataset.enhancer;
   document.querySelectorAll(".enhance-option").forEach(x => x.classList.toggle("active", x === b));
-  if (state.selectedEnhancer === "anime") {
-    state.selectedScale = 4;
-    document.querySelectorAll(".scale").forEach(x => x.classList.toggle("active", x.dataset.scale === "4"));
-  }
 });
-document.querySelectorAll(".model-option:not(.enhance-option)").forEach(b => b.onclick = () => {
+document.querySelectorAll(".cutout-option").forEach(b => b.onclick = () => {
+  state.selectedCutout = b.dataset.cutout;
+  document.querySelectorAll(".cutout-option").forEach(x => x.classList.toggle("active", x === b));
+});
+document.querySelectorAll(".prompt-preset").forEach(b => b.onclick = () => {
+  $("promptInput").value = b.dataset.prompt || "";
+  document.querySelectorAll(".prompt-preset").forEach(x => x.classList.toggle("active", x === b));
+});
+document.querySelectorAll(".model-option[data-model]").forEach(b => b.onclick = () => {
   state.selectedModel = b.dataset.model;
-  document.querySelectorAll(".model-option:not(.enhance-option)").forEach(x => x.classList.toggle("active", x === b));
+  document.querySelectorAll(".model-option[data-model]").forEach(x => x.classList.toggle("active", x === b));
+  updatePromptVisibility();
 });
+function updatePromptVisibility() {
+  const promptDetails = $("promptDetails");
+  promptDetails.hidden = state.selectedModel !== "sd15";
+  promptDetails.open = state.selectedModel === "sd15";
+}
 $("undoBtn").onclick = undo;
 $("floatUndo").onclick = undo;
 $("floatDraw").onclick = () => setMode("draw");
@@ -764,20 +1256,22 @@ $("removeBtn").onclick = async () => {
 
 $("cutoutBtn").onclick = async () => {
   if (!state.imageDataUrl) return toast("请先上传图片", "error");
-  setBusy(true, "正在抠出主体透明背景...");
+  const cutoutLabels = { u2net: "快速 u2net", ben2: "高质量 BEN2" };
+  setBusy(true, `正在使用${cutoutLabels[state.selectedCutout] || "抠图模型"}抠出主体...`);
   $("cutoutBtn").disabled = true;
   try {
     const resp = await fetch("/api/cutout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: state.imageDataUrl }),
+      body: JSON.stringify({ image: state.imageDataUrl, model: state.selectedCutout }),
     });
     const data = await resp.json();
     if (!data.success) throw new Error(data.error || "抠图失败");
     state.cutoutDataUrl = data.result;
     state.resultDataUrl = data.result;
     state.enhancedDataUrl = "";
-    showResult(data, false, false, "主体抠图透明背景");
+    showResult(data, false, false, `${cutoutLabels[state.selectedCutout] || "主体抠图"}透明背景`);
+    finishBackgroundProgress(state.selectedCutout === "ben2" ? "BEN2 高质量抠图模型" : "rembg/u2net 抠图模型");
     $("enhanceBtn").disabled = false;
   } catch (err) {
     toast("抠图失败: " + err.message, "error");
@@ -792,7 +1286,13 @@ $("enhanceBtn").onclick = async () => {
   if (!sourceImage) return toast("请先上传图片", "error");
   const enhancingOriginal = !state.resultDataUrl;
   const scale = state.selectedScale;
-  const enhancerName = state.selectedEnhancer === "anime" ? "动漫插画增强" : "通用照片增强";
+  const enhancerLabels = {
+    realesrgan4: "R-ESRGAN 4x+",
+    anime: "R-ESRGAN 4x+ Anime6B",
+    ultrasharp: "4x-UltraSharp",
+    swinir_large: "SwinIR-L 4x GAN",
+  };
+  const enhancerName = enhancerLabels[state.selectedEnhancer] || "增强";
   setBusy(true, `正在${enhancingOriginal ? "原图" : "结果"}${enhancerName} ${scale}x...`);
   $("enhanceBtn").disabled = true;
   try {
@@ -820,7 +1320,17 @@ function showResult(data, enhanced = false, enhancedOriginal = false, resultLabe
   $("beforeLayer").style.width = "50%";
   $("splitter").style.left = "50%";
   const size = enhanced ? data.enhanced_size : data.size;
-  const enhancerLabel = data.enhancer === "anime" ? "动漫插画增强" : "通用照片增强";
+  const enhancerLabels = {
+    realesrgan4: "R-ESRGAN 4x+",
+    general: "R-ESRGAN 4x+",
+    anime: "R-ESRGAN 4x+ Anime6B",
+    realesrgan_anime: "R-ESRGAN 4x+ Anime6B",
+    ultrasharp: "4x-UltraSharp",
+    "4x_ultrasharp": "4x-UltraSharp",
+    swinir: "SwinIR-L 4x GAN",
+    swinir_large: "SwinIR-L 4x GAN",
+  };
+  const enhancerLabel = enhancerLabels[data.enhancer] || data.enhancer || "增强模型";
   $("resultMeta").innerHTML = `
     <div><span>处理耗时</span><strong>${data.time}s</strong></div>
     <div><span>输出尺寸</span><strong>${size[0]} × ${size[1]}</strong></div>
@@ -853,6 +1363,33 @@ $("downloadBtn").onclick = () => {
   a.remove();
 };
 
+async function copyImage(dataUrl, label) {
+  if (!dataUrl) return toast(`没有可复制的${label}`, "error");
+  try {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    const pngBlob = blob.type === "image/png" ? blob : await convertBlobToPng(blob);
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
+    toast(`${label}已复制到剪贴板`);
+  } catch (err) {
+    toast(`复制失败: ${err.message || err}`, "error");
+  }
+}
+
+async function convertBlobToPng(blob) {
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0);
+  return await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+}
+
+$("copyOriginalBtn").onclick = () => copyImage(state.imageDataUrl, "原图");
+$("copyResultBtn").onclick = () => copyImage(state.enhancedDataUrl || state.resultDataUrl, "结果图");
+$("reuseResultBtn").onclick = () => loadDataUrlToEditor(state.enhancedDataUrl || state.resultDataUrl);
+
 let splitting = false;
 function setSplit(clientX) {
   const box = $("compareBox").getBoundingClientRect();
@@ -877,10 +1414,26 @@ window.addEventListener("resize", fitCanvas);
 
 function updateProgress(prefix, data) {
   const pct = Math.round(data.percent || 0);
+  if ($(prefix + "Name") && data.name) $(prefix + "Name").textContent = data.name;
   $(prefix + "Bar").style.width = pct + "%";
   $(prefix + "Text").textContent = data.status === "downloading" ? `${pct}% ${data.message || ""}` :
+    data.status === "processing" ? `${pct}% ${data.message || ""}` :
+    data.status === "connecting" ? data.message || "连接中" :
     data.status === "done" ? "已就绪" :
     data.status === "error" ? "失败" : "等待中";
+}
+
+function finishBackgroundProgress(name = "BEN2 高质量抠图模型") {
+  state.backgroundProgressIgnoreUntil = Date.now() + 2500;
+  updateProgress("bg", {
+    active: false,
+    name,
+    status: "done",
+    percent: 100,
+    message: "抠图完成",
+  });
+  state.progressMinimized = false;
+  $("downloadModal").classList.remove("open");
 }
 
 function watchDownloads() {
@@ -889,10 +1442,15 @@ function watchDownloads() {
     es = new EventSource("/api/download-progress");
     es.onmessage = event => {
       const data = JSON.parse(event.data);
-      if (data.any_active) $("downloadModal").classList.add("open");
+      if (data.any_active && !state.progressMinimized) $("downloadModal").classList.add("open");
       if (data.lama) updateProgress("lama", data.lama);
       if (data.esrgan) updateProgress("esr", data.esrgan);
-      if (!data.any_active) setTimeout(() => $("downloadModal").classList.remove("open"), 900);
+      if (data.diffusion) updateProgress("sd", data.diffusion);
+      if (data.background && Date.now() >= state.backgroundProgressIgnoreUntil) updateProgress("bg", data.background);
+      if (!data.any_active) {
+        state.progressMinimized = false;
+        setTimeout(() => $("downloadModal").classList.remove("open"), 900);
+      }
     };
     es.onerror = () => { es.close(); setTimeout(watchDownloads, 5000); };
   } catch {}

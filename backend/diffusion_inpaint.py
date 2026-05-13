@@ -1,4 +1,7 @@
 import os
+import sys
+import threading
+import time
 from pathlib import Path
 
 from PIL import Image, ImageFilter
@@ -8,8 +11,62 @@ MODEL_DIR = APP_ROOT / "models" / "diffusers"
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
 MODEL_ID = "stable-diffusion-v1-5/stable-diffusion-inpainting"
+MODEL_ALLOW_PATTERNS = [
+    "model_index.json",
+    "scheduler/*",
+    "tokenizer/*",
+    "feature_extractor/*",
+    "text_encoder/config.json",
+    "text_encoder/model.fp16.safetensors",
+    "unet/config.json",
+    "unet/diffusion_pytorch_model.fp16.safetensors",
+    "vae/config.json",
+    "vae/diffusion_pytorch_model.fp16.safetensors",
+]
+MODEL_IGNORE_PATTERNS = [
+    "*.bin",
+    "*.ckpt",
+    "*.msgpack",
+    "*.onnx",
+    "*.pth",
+    "*.pt",
+    "*/diffusion_pytorch_model.bin",
+    "*/diffusion_pytorch_model.fp16.bin",
+    "*/pytorch_model.bin",
+    "*/pytorch_model.fp16.bin",
+    "*/model.bin",
+    "*/model.fp16.bin",
+]
 
 _pipe = None
+_download_progress = {
+    "active": False,
+    "name": "SD 1.5 Inpaint 生成式修复模型",
+    "percent": 0,
+    "downloaded_mb": 0.0,
+    "total_mb": 0.0,
+    "status": "idle",
+    "message": "",
+}
+_progress_lock = threading.Lock()
+
+
+def get_download_progress():
+    with _progress_lock:
+        return dict(_download_progress)
+
+
+def _set_progress(**kwargs):
+    with _progress_lock:
+        _download_progress.update(kwargs)
+
+
+def _print_progress_bar(prefix, downloaded_mb, total_mb, percent):
+    bar_width = 28
+    filled = int(bar_width * max(0, min(100, percent)) / 100)
+    bar = "#" * filled + "-" * (bar_width - filled)
+    print(f"\r{prefix} [{bar}] {percent:5.1f}%  {downloaded_mb:.1f}MB / {total_mb:.1f}MB", end="")
+    sys.stdout.flush()
 
 
 def model_status() -> dict:
@@ -46,6 +103,7 @@ def load_pipeline():
 
     import torch
     from diffusers import StableDiffusionInpaintPipeline
+    from huggingface_hub import snapshot_download
 
     if not torch.cuda.is_available():
         raise RuntimeError("生成式修复模型需要 CUDA 显卡；当前环境未检测到 CUDA。")
@@ -56,13 +114,111 @@ def load_pipeline():
 
     print(f"[SD-Inpaint] 正在加载模型: {MODEL_ID}")
     print(f"[SD-Inpaint] 模型目录: {MODEL_DIR}")
+
+    class HfDownloadProgress:
+        _lock = threading.RLock()
+
+        def __init__(self, *args, **kwargs):
+            self.iterable = args[0] if args else None
+            self.total = kwargs.get("total") or 0
+            self.n = kwargs.get("initial") or 0
+            self.desc = kwargs.get("desc") or "HuggingFace"
+            self.disable = kwargs.get("disable", False)
+
+        @classmethod
+        def get_lock(cls):
+            return cls._lock
+
+        @classmethod
+        def set_lock(cls, lock):
+            cls._lock = lock
+
+        def update(self, n=1):
+            if self.disable:
+                return
+            self.n += n
+            if self.total:
+                percent = min(100, self.n * 100 / self.total)
+                mb_down = self.n / (1024 * 1024)
+                mb_total = self.total / (1024 * 1024)
+                _print_progress_bar("[SD-Inpaint] 下载进度", mb_down, mb_total, percent)
+                _set_progress(
+                    active=True,
+                    status="downloading",
+                    percent=round(percent, 1),
+                    downloaded_mb=round(mb_down, 1),
+                    total_mb=round(mb_total, 1),
+                    message=f"{self.desc}: {mb_down:.1f}MB / {mb_total:.1f}MB",
+                )
+
+        def __iter__(self):
+            if self.iterable is None:
+                return iter(())
+
+            def generator():
+                for item in self.iterable:
+                    yield item
+                    self.update(1)
+
+            return generator()
+
+        def __len__(self):
+            if self.total:
+                return int(self.total)
+            try:
+                return len(self.iterable)
+            except Exception:
+                return 0
+
+        def close(self):
+            print()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+
+    _set_progress(active=True, status="downloading", percent=0, downloaded_mb=0.0, total_mb=0.0, message="检查模型文件...")
+    last_exc = None
+    for attempt in range(1, 4):
+        try:
+            if attempt > 1:
+                message = f"网络中断，正在续传重试 {attempt}/3..."
+                print(f"[SD-Inpaint] {message}")
+                _set_progress(active=True, status="downloading", message=message)
+                time.sleep(2)
+            snapshot_download(
+                repo_id=MODEL_ID,
+                cache_dir=str(MODEL_DIR),
+                allow_patterns=MODEL_ALLOW_PATTERNS,
+                ignore_patterns=MODEL_IGNORE_PATTERNS,
+                resume_download=True,
+                tqdm_class=HfDownloadProgress,
+            )
+            _set_progress(active=False, status="done", percent=100, message="下载完成")
+            last_exc = None
+            break
+        except Exception as exc:
+            last_exc = exc
+            text = str(exc)
+            retryable = any(key in text for key in ("IncompleteRead", "ChunkedEncodingError", "Connection broken", "Read timed out", "ConnectionError"))
+            if not retryable or attempt >= 3:
+                _set_progress(active=False, status="error", message=text)
+                raise
+            _set_progress(active=True, status="downloading", message=f"网络中断，准备续传重试 {attempt + 1}/3...")
+    if last_exc is not None:
+        raise last_exc
+
     _pipe = StableDiffusionInpaintPipeline.from_pretrained(
         MODEL_ID,
         cache_dir=str(MODEL_DIR),
         torch_dtype=torch.float16,
-        use_safetensors=False,
+        use_safetensors=True,
+        variant="fp16",
         safety_checker=None,
         requires_safety_checker=False,
+        local_files_only=True,
     ).to("cuda")
     try:
         _pipe.enable_attention_slicing()

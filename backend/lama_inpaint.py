@@ -18,6 +18,7 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 
 MODEL_URL = "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt"
 MODEL_PATH = os.path.join(MODEL_DIR, "big-lama.pt")
+MODEL_PART_PATH = MODEL_PATH + ".part"
 
 # 全局下载进度（供 SSE 接口读取）
 _download_progress = {
@@ -42,6 +43,14 @@ def _set_progress(**kwargs):
     """更新下载进度（线程安全）"""
     with _progress_lock:
         _download_progress.update(kwargs)
+
+
+def _print_progress_bar(prefix, downloaded_mb, total_mb, percent):
+    bar_width = 28
+    filled = int(bar_width * max(0, min(100, percent)) / 100)
+    bar = "#" * filled + "-" * (bar_width - filled)
+    print(f"\r{prefix} [{bar}] {percent:5.1f}%  {downloaded_mb:.1f}MB / {total_mb:.1f}MB", end="")
+    sys.stdout.flush()
 
 
 def download_model(progress_callback=None):
@@ -72,8 +81,7 @@ def download_model(progress_callback=None):
             percent = min(100, downloaded * 100 / total_size)
             mb_down = downloaded / (1024 * 1024)
             mb_total = total_size / (1024 * 1024)
-            print(f"\r[LaMa] 下载进度: {mb_down:.1f}MB / {mb_total:.1f}MB ({percent:.0f}%)", end="")
-            sys.stdout.flush()
+            _print_progress_bar("[LaMa] 下载进度", mb_down, mb_total, percent)
             _set_progress(
                 percent=round(percent, 1),
                 downloaded_mb=round(mb_down, 1),
@@ -84,25 +92,100 @@ def download_model(progress_callback=None):
                 progress_callback("LaMa 去水印模型", round(percent, 1), round(mb_down, 1), round(mb_total, 1), "downloading")
     
     try:
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH, progress_hook)
+        if os.path.exists(MODEL_PART_PATH):
+            os.remove(MODEL_PART_PATH)
+        urllib.request.urlretrieve(MODEL_URL, MODEL_PART_PATH, progress_hook)
+        os.replace(MODEL_PART_PATH, MODEL_PATH)
         print(f"\n[LaMa] 下载完成!")
         _set_progress(active=False, status="done", percent=100, message="下载完成")
         if progress_callback:
             progress_callback("LaMa 去水印模型", 100, 0, 0, "done")
-    except Exception as e:
+    except BaseException as e:
         print(f"\n[LaMa] 下载失败: {e}")
+        if os.path.exists(MODEL_PART_PATH):
+            try:
+                os.remove(MODEL_PART_PATH)
+            except Exception:
+                pass
+        if not isinstance(e, Exception):
+            _set_progress(active=False, status="error", message="下载已取消")
+            raise
         print("[LaMa] 尝试备用下载链接（HuggingFace）...")
         _set_progress(status="downloading", message="切换备用源 (HuggingFace)...")
         if progress_callback:
             progress_callback("LaMa 去水印模型", 0, 0, 0, "downloading")
         try:
-            from huggingface_hub import hf_hub_download
-            hf_hub_download(
+            from huggingface_hub import snapshot_download
+
+            class HfDownloadProgress:
+                _lock = threading.RLock()
+
+                def __init__(self, *args, **kwargs):
+                    self.iterable = args[0] if args else None
+                    self.total = kwargs.get("total") or 0
+                    self.n = kwargs.get("initial") or 0
+                    self.desc = kwargs.get("desc") or "HuggingFace"
+                    self.disable = kwargs.get("disable", False)
+
+                @classmethod
+                def get_lock(cls):
+                    return cls._lock
+
+                @classmethod
+                def set_lock(cls, lock):
+                    cls._lock = lock
+
+                def update(self, n=1):
+                    if self.disable:
+                        return
+                    self.n += n
+                    if self.total:
+                        percent = min(100, self.n * 100 / self.total)
+                        mb_down = self.n / (1024 * 1024)
+                        mb_total = self.total / (1024 * 1024)
+                        _print_progress_bar("[LaMa] HF 下载进度", mb_down, mb_total, percent)
+                        _set_progress(
+                            percent=round(percent, 1),
+                            downloaded_mb=round(mb_down, 1),
+                            total_mb=round(mb_total, 1),
+                            message=f"{mb_down:.1f}MB / {mb_total:.1f}MB"
+                        )
+
+                def __iter__(self):
+                    if self.iterable is None:
+                        return iter(())
+
+                    def generator():
+                        for item in self.iterable:
+                            yield item
+                            self.update(1)
+
+                    return generator()
+
+                def __len__(self):
+                    if self.total:
+                        return int(self.total)
+                    try:
+                        return len(self.iterable)
+                    except Exception:
+                        return 0
+
+                def close(self):
+                    print()
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    self.close()
+
+            snapshot_download(
                 repo_id="akhaliq/lama",
-                filename="big-lama.pt",
+                allow_patterns=["big-lama.pt"],
                 local_dir=MODEL_DIR,
                 local_dir_use_symlinks=False,
                 cache_dir=MODEL_DIR,
+                tqdm_class=HfDownloadProgress,
             )
             print("[LaMa] 从 HuggingFace 下载完成!")
             _set_progress(active=False, status="done", percent=100, message="下载完成")

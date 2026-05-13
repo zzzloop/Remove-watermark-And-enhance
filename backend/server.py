@@ -4,6 +4,7 @@ import io
 import json
 import os
 import sys
+import threading
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -33,10 +34,20 @@ os.environ.setdefault("PYTHONUTF8", "1")
 
 sys.path.insert(0, str(BACKEND_DIR))
 
-from diffusion_inpaint import inpaint_diffusion, model_status as diffusion_model_status
+from diffusion_inpaint import get_download_progress as diffusion_progress, inpaint_diffusion, model_status as diffusion_model_status
 from enhance import enhance, get_download_progress as esrgan_progress
-from background_remove import remove_background
+from background_remove import finish_progress as finish_bg_progress, get_download_progress as bg_progress, remove_background
 from lama_inpaint import get_download_progress as lama_progress, inpaint, inpaint_lama, inpaint_opencv
+
+_cuda_warmup = {
+    "started": False,
+    "done": False,
+    "running": False,
+    "error": "",
+    "device": "",
+    "elapsed": 0.0,
+}
+_cuda_warmup_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -93,6 +104,58 @@ def get_gpu_name() -> str:
         return "Unknown"
 
 
+def _run_cuda_warmup():
+    started = time.time()
+    with _cuda_warmup_lock:
+        if _cuda_warmup["running"] or _cuda_warmup["done"]:
+            return
+        _cuda_warmup.update(started=True, running=True, error="", elapsed=0.0)
+
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            with _cuda_warmup_lock:
+                _cuda_warmup.update(running=False, done=True, device="CPU", elapsed=round(time.time() - started, 2))
+            return
+
+        device = torch.device("cuda")
+        torch.backends.cudnn.benchmark = True
+        torch.cuda.init()
+        torch.cuda.empty_cache()
+
+        x = torch.randn((1, 3, 96, 96), device=device)
+        conv = torch.nn.Conv2d(3, 16, 3, padding=1).to(device).eval()
+        with torch.inference_mode():
+            for _ in range(3):
+                y = conv(x)
+                y = torch.nn.functional.interpolate(y, scale_factor=2, mode="bilinear", align_corners=False)
+                y.mean().item()
+        torch.cuda.synchronize()
+
+        with _cuda_warmup_lock:
+            _cuda_warmup.update(
+                running=False,
+                done=True,
+                device=torch.cuda.get_device_name(0),
+                elapsed=round(time.time() - started, 2),
+            )
+        print(f"[CUDA] Warmup complete: {_cuda_warmup['device']}, {_cuda_warmup['elapsed']}s")
+    except Exception as exc:
+        with _cuda_warmup_lock:
+            _cuda_warmup.update(running=False, done=False, error=str(exc), elapsed=round(time.time() - started, 2))
+        print(f"[CUDA] Warmup failed: {exc}")
+
+
+def start_cuda_warmup_background():
+    with _cuda_warmup_lock:
+        if _cuda_warmup["running"] or _cuda_warmup["done"]:
+            return dict(_cuda_warmup)
+    threading.Thread(target=_run_cuda_warmup, daemon=True).start()
+    with _cuda_warmup_lock:
+        return dict(_cuda_warmup)
+
+
 @app.get("/")
 async def serve_index():
     index_path = FRONTEND_DIR / "index.html"
@@ -111,7 +174,24 @@ async def health_check():
         "cuda_available": torch_available(),
         "gpu_name": get_gpu_name(),
         "model_root": str(MODEL_ROOT),
+        "cuda_warmup": dict(_cuda_warmup),
     }
+
+
+@app.post("/api/warmup")
+async def warmup_cuda():
+    state = start_cuda_warmup_background()
+    return {"success": True, "cuda_available": torch_available(), "warmup": state}
+
+
+@app.post("/api/shutdown")
+async def shutdown_server():
+    def stop_process():
+        time.sleep(0.05)
+        os._exit(0)
+
+    threading.Thread(target=stop_process, daemon=True).start()
+    return {"success": True, "message": "服务正在停止"}
 
 
 @app.get("/api/models")
@@ -156,21 +236,16 @@ async def download_progress_stream():
         while True:
             lama = lama_progress()
             esr = esrgan_progress()
+            sd = diffusion_progress()
+            bg = bg_progress()
             data = {
                 "lama": lama,
                 "esrgan": esr,
-                "any_active": lama.get("active", False) or esr.get("active", False),
+                "diffusion": sd,
+                "background": bg,
+                "any_active": lama.get("active", False) or esr.get("active", False) or sd.get("active", False) or bg.get("active", False),
             }
             yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-            if not data["any_active"]:
-                await asyncio.sleep(10)
-                lama2 = lama_progress()
-                esr2 = esrgan_progress()
-                if not lama2.get("active", False) and not esr2.get("active", False):
-                    final_data = {"lama": lama2, "esrgan": esr2, "any_active": False}
-                    yield f"data: {json.dumps(final_data, ensure_ascii=False)}\n\n"
-                    break
 
             await asyncio.sleep(1)
 
@@ -197,7 +272,7 @@ async def remove_watermark(request: Request):
         if not image or not mask:
             return JSONResponse({"success": False, "error": "缺少 image 或 mask 参数"}, status_code=400)
 
-        img = base64_to_image(image).convert("RGB")
+        img = base64_to_image(image).convert("RGBA")
         mask_img = base64_to_image(mask).convert("L")
         orig_w, orig_h = img.size
 
@@ -206,15 +281,11 @@ async def remove_watermark(request: Request):
 
         print(f"[API] 收到去水印请求: {orig_w}x{orig_h}, model={model}")
         if model == "opencv":
-            result_img = inpaint_opencv(img, mask_img)
+            result_img = await asyncio.to_thread(inpaint_opencv, img, mask_img)
         elif model == "lama":
-            try:
-                result_img = inpaint_lama(img, mask_img)
-            except Exception as exc:
-                print(f"[LaMa] 模型不可用，自动改用 OpenCV: {exc}")
-                result_img = inpaint_opencv(img, mask_img)
+            result_img = await asyncio.to_thread(inpaint_lama, img, mask_img)
         elif model == "sd15":
-            result_img = inpaint_diffusion(img, mask_img, prompt=prompt)
+            result_img = await asyncio.to_thread(inpaint_diffusion, img, mask_img, prompt=prompt)
         else:
             return JSONResponse({"success": False, "error": f"未知模型: {model}"}, status_code=400)
         elapsed = time.time() - t0
@@ -240,25 +311,22 @@ async def enhance_resolution(request: Request):
     try:
         payload = await read_payload(request)
         image = payload.get("image")
-        scale = int(payload.get("scale", 2))
-        enhancer = payload.get("enhancer", "general")
+        scale = float(payload.get("scale", 4))
+        enhancer = payload.get("enhancer", "swinir_large")
         if not image:
             return JSONResponse({"success": False, "error": "缺少 image 参数"}, status_code=400)
 
-        if enhancer not in ("general", "anime"):
-            return JSONResponse({"success": False, "error": "enhancer 仅支持 general 或 anime"}, status_code=400)
+        if enhancer not in ("realesrgan4", "general", "photo", "anime", "realesrgan_anime", "ultrasharp", "4x_ultrasharp", "swinir", "swinir_large"):
+            return JSONResponse({"success": False, "error": "enhancer 仅支持 R-ESRGAN 4x+、R-ESRGAN 4x+ Anime6B、4x-UltraSharp 或 SwinIR-L 4x"}, status_code=400)
 
-        if enhancer == "anime":
-            scale = 4
+        if scale < 0 or scale > 8:
+            return JSONResponse({"success": False, "error": "scale 仅支持 0 到 8"}, status_code=400)
 
-        if scale not in (2, 4):
-            return JSONResponse({"success": False, "error": "scale 仅支持 2 或 4"}, status_code=400)
-
-        img = base64_to_image(image).convert("RGB")
+        img = base64_to_image(image).convert("RGBA")
         orig_w, orig_h = img.size
-        print(f"[API] 收到增强请求: {orig_w}x{orig_h} -> {scale}x, enhancer={enhancer}")
+        print(f"[API] 收到增强请求: {orig_w}x{orig_h} -> {scale:g}x, enhancer={enhancer}")
 
-        result_img = enhance(img, scale, enhancer)
+        result_img = await asyncio.to_thread(enhance, img, scale, enhancer)
 
         elapsed = time.time() - t0
         new_w, new_h = result_img.size
@@ -285,14 +353,21 @@ async def cutout_subject(request: Request):
     try:
         payload = await read_payload(request)
         image = payload.get("image")
+        cutout_model = payload.get("model", "u2net")
         if not image:
             return JSONResponse({"success": False, "error": "缺少 image 参数"}, status_code=400)
+        if cutout_model not in ("u2net", "rembg", "ben2"):
+            return JSONResponse({"success": False, "error": "抠图模型仅支持 u2net 或 ben2"}, status_code=400)
 
         img = base64_to_image(image).convert("RGBA")
         orig_w, orig_h = img.size
-        print(f"[API] 收到主体抠图请求: {orig_w}x{orig_h}")
+        print(f"[API] 收到主体抠图请求: {orig_w}x{orig_h}, model={cutout_model}")
 
-        result_img = remove_background(img)
+        result_img = await asyncio.to_thread(remove_background, img, model=cutout_model)
+        finish_bg_progress(
+            name="BEN2 高质量抠图模型" if cutout_model == "ben2" else "rembg/u2net 抠图模型",
+            message="抠图完成",
+        )
 
         elapsed = time.time() - t0
         print(f"[API] 主体抠图完成，耗时 {elapsed:.2f}s")
@@ -302,7 +377,7 @@ async def cutout_subject(request: Request):
                 "result": f"data:image/png;base64,{image_to_base64(result_img, 'PNG')}",
                 "time": round(elapsed, 2),
                 "size": [orig_w, orig_h],
-                "model": "cutout",
+                "model": f"cutout:{cutout_model}",
             }
         )
     except Exception as exc:
