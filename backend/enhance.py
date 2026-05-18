@@ -393,10 +393,37 @@ class SRVGGNetCompact(nn.Module):
 
 _esrgan_models = {}
 _device_esr = None
+_torch_backend_inited = False
+
+
+def _init_torch_backend():
+    """初始化 torch 推理加速相关开关（只做一次）。
+
+    目标：不改变结果的前提下，提升 CUDA 推理吞吐/首帧速度。
+    """
+    global _torch_backend_inited
+    if _torch_backend_inited:
+        return
+    _torch_backend_inited = True
+
+    try:
+        # 允许 TF32（Ampere+）通常对超分这类卷积/矩阵计算提速明显，视觉差异可忽略。
+        if hasattr(torch.backends, "cuda") and hasattr(torch.backends.cuda, "matmul"):
+            torch.backends.cuda.matmul.allow_tf32 = True
+        if hasattr(torch.backends, "cudnn"):
+            torch.backends.cudnn.allow_tf32 = True
+            torch.backends.cudnn.benchmark = True
+        # PyTorch 2.x：提升 matmul 精度策略（对性能有利）
+        if hasattr(torch, "set_float32_matmul_precision"):
+            torch.set_float32_matmul_precision("high")
+    except Exception:
+        # 不影响主流程
+        pass
 
 
 def get_device():
     """获取推理设备"""
+    _init_torch_backend()
     if torch.cuda.is_available():
         return torch.device("cuda")
     return torch.device("cpu")
@@ -724,10 +751,11 @@ def _enhance_with_realesrganer(image: Image.Image, upsampler, spec, target_scale
         err = str(exc).lower()
         if "out of memory" not in err and "cuda" not in err:
             raise
+        # 关键优化：
+        # 之前这里为了切 tile 会重新 new RealESRGANer + 重新 load 权重，导致“有时特别慢”（大图触发 OOM 时尤为明显）。
+        # 实际上 RealESRGANer 支持直接修改 tile/tile_pad 后复用同一个 upsampler，从而避免重复加载权重。
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-        from basicsr.archs.rrdbnet_arch import RRDBNet as BasicSRRRDBNet
-        from realesrgan import RealESRGANer
 
         output_bgr = None
         last_exc = exc
@@ -735,33 +763,17 @@ def _enhance_with_realesrganer(image: Image.Image, upsampler, spec, target_scale
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             _set_progress(active=True, name=label, status="processing", percent=45, message=f"显存不足，改用分块推理 tile={tile}")
-            print(f"[ESRGAN] 整图推理显存不足，尝试 tile={tile}")
-            model = BasicSRRRDBNet(
-                num_in_ch=3,
-                num_out_ch=3,
-                num_feat=64,
-                num_block=spec.get("nb", 23),
-                num_grow_ch=32,
-                scale=4,
-            )
-            tiled = RealESRGANer(
-                scale=4,
-                model_path=spec["path"],
-                model=model,
-                tile=tile,
-                tile_pad=10,
-                pre_pad=0,
-                half=torch.cuda.is_available(),
-                gpu_id=0 if torch.cuda.is_available() else None,
-            )
+            print(f"[ESRGAN] 整图推理显存不足，尝试 tile={tile} (复用已加载模型，避免重复加载权重)")
             try:
+                upsampler.tile = tile
+                upsampler.tile_pad = 10
                 t_tile = time.time()
                 output_bgr, _ = _run_with_progress_heartbeat(
                     label,
                     45,
                     90,
                     lambda elapsed, tile=tile: f"正在分块推理 tile={tile}，预计输出 {target_w}x{target_h}，已耗时 {elapsed}s",
-                    lambda tiled=tiled: tiled.enhance(img_bgr, outscale=float(target_scale)),
+                    lambda: upsampler.enhance(img_bgr, outscale=float(target_scale)),
                 )
                 print(f"[ESRGAN] tile={tile} 分块推理完成，耗时 {time.time() - t_tile:.2f}s")
                 break
@@ -949,7 +961,7 @@ def _enhance_with_esrgan(image: Image.Image, target_scale: float = 4, model_name
         img_tensor = F.pad(img_tensor, (0, pad_w, 0, pad_h), mode="reflect")
 
     # 推理
-    with torch.no_grad():
+    with torch.inference_mode():
         if device.type == "cuda":
             with torch.cuda.amp.autocast():
                 _set_progress(active=True, name=label, status="processing", percent=40, message="正在推理增强模型")
@@ -992,7 +1004,7 @@ def _enhance_with_swinir(image: Image.Image, model, device, spec, target_scale: 
 
     result = None
     last_exc = None
-    with torch.no_grad():
+    with torch.inference_mode():
         for tile in (800, 512, 400, 256):
             try:
                 _set_progress(active=True, name=spec["label"], status="processing", percent=30, message=f"正在快速分块推理 tile={tile}")
